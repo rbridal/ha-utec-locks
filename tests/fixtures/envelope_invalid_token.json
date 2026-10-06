@@ -1,0 +1,1 @@
+{"header": {"namespace": "Uhome.Device", "name": "Query"}, "payload": {"error": {"code": "INVALID_TOKEN", "message": "Token is invalid"}}}

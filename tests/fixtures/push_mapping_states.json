@@ -1,0 +1,1 @@
+{"header": {"name": "DeviceState"}, "payload": {"devices": [{"id": "AA:BB:CC:00:00:01", "states": {"st.lock": {"lockState": "unlocked", "lockMode": 1}, "st.batteryLevel": {"level": 1}}}]}}

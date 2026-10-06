@@ -1,0 +1,3 @@
+{
+  "payload": {"devices": [{"id": "AA:BB:CC:00:00:01", "error": {"code": "DEVICE_OFFLINE", "message": "Device is offline and cannot accept commands"}}]}
+}

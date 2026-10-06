@@ -1,0 +1,36 @@
+{
+  "header": {"namespace": "Uhome.Device", "name": "Discovery", "messageId": "m", "payloadVersion": "1"},
+  "payload": {
+    "devices": [
+      {
+        "id": "AA:BB:CC:00:00:01",
+        "name": "Front Door",
+        "category": "SmartLock",
+        "handleType": "utec-lock",
+        "deviceInfo": {"manufacturer": "U-tec", "model": "U-Bolt Pro WiFi", "hwVersion": "1.0.3"},
+        "customData": {"token": "secret-custom"}
+      },
+      {
+        "id": "AA:BB:CC:00:00:02",
+        "name": "Shop Door",
+        "category": "SmartLock",
+        "handleType": "utec-lock-sensor",
+        "deviceInfo": {"manufacturer": "U-tec", "model": "Latch 7 Pro", "hwVersion": "2.1"}
+      },
+      {
+        "id": "7C:DF:A1:68:3E:6A",
+        "name": "switch1",
+        "category": "SmartSwitch",
+        "handleType": "utec-dimmer",
+        "deviceInfo": {"manufacturer": "U-tec", "model": "US01", "hwVersion": "01.01.0330"}
+      },
+      {
+        "id": "84:F7:03:BA:A4:C2",
+        "name": "BulbA4C2",
+        "category": "LIGHT",
+        "handleType": "utec-dimmer",
+        "deviceInfo": {"manufacturer": "U-tec", "model": "A19-C1", "hwVersion": "01.40.0301"}
+      }
+    ]
+  }
+}

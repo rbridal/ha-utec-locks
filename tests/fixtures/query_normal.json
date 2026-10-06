@@ -1,0 +1,26 @@
+{
+  "header": {"namespace": "Uhome.Device", "name": "Query", "messageId": "m", "payloadVersion": "1"},
+  "payload": {
+    "devices": [
+      {
+        "id": "AA:BB:CC:00:00:01",
+        "states": [
+          {"capability": "st.healthCheck", "name": "status", "value": "Online"},
+          {"capability": "st.lock", "name": "lockState", "value": "Locked"},
+          {"capability": "st.lock", "name": "lockMode", "value": 0},
+          {"capability": "st.batteryLevel", "name": "level", "value": 4}
+        ]
+      },
+      {
+        "id": "AA:BB:CC:00:00:02",
+        "states": [
+          {"capability": "st.healthCheck", "name": "status", "value": "Online"},
+          {"capability": "st.lock", "name": "lockState", "value": "Unlocked"},
+          {"capability": "st.lock", "name": "lockMode", "value": 1},
+          {"capability": "st.batteryLevel", "name": "level", "value": 2},
+          {"capability": "st.doorSensor", "name": "sensorState", "value": "Closed"}
+        ]
+      }
+    ]
+  }
+}

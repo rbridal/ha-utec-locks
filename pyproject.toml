@@ -1,0 +1,41 @@
+[project]
+name = "ha-utec-locks"
+version = "0.0.0"
+description = "U-tec Locks custom integration for Home Assistant (dev tooling only; not a package)"
+requires-python = ">=3.14"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "ASYNC", "PL", "C4"]
+ignore = [
+  "PLR0912", "PLR0913", "PLR0915", "PLR2004", "PLR0911",
+  "E501",
+  "RUF012",
+  "PLC0415",
+  "B904",
+  "ASYNC109",
+  "PLR0917",
+]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components"]
+combine-as-imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["custom_components.utec_locks"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
