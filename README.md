@@ -2,6 +2,8 @@
 
 A community integration for U-tec / Ultraloq smart locks, using U-tec's OpenAPI and your own API credentials.
 
+> **Status: 0.1.0 pre-release, for hardware testing.** Expect rough edges and report them in [issues](https://github.com/rbridal/ha-utec-locks/issues).
+
 **Not made, endorsed, or supported by U-tec or Xthings.** Please report problems with this integration [here](https://github.com/rbridal/ha-utec-locks/issues), not to U-tec support.
 
 ## Is this integration for you?
