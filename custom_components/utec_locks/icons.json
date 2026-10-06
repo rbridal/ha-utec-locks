@@ -1,0 +1,14 @@
+{
+  "entity": {
+    "lock": {
+      "lock": {
+        "default": "mdi:lock"
+      }
+    },
+    "select": {
+      "lock_mode": {
+        "default": "mdi:lock-reset"
+      }
+    }
+  }
+}

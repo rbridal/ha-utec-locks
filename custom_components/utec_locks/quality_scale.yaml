@@ -1,0 +1,8 @@
+# Quality-scale target: Silver complete, most of Gold (see docs/DESIGN.md).
+# Scaffold placeholder — fill rules as milestones land.
+rules:
+  config-flow: todo
+  entity-unique-id: todo
+  appropriate-polling: done
+  # Deviation: firm 30 s floor; interval configurable upward only.
+  # Deviation: stale locks stay available (unknown) so commands are not dropped.

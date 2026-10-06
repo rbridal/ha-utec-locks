@@ -1,0 +1,67 @@
+{
+  "config": {
+    "step": {
+      "pick_implementation": {
+        "title": "Sign in with U-tec OpenAPI",
+        "description": "Choose your U-tec OpenAPI credentials (Client ID and Secret from the Xthings Home app)."
+      }
+    },
+    "abort": {
+      "already_configured": "This U-tec account is already configured.",
+      "missing_configuration": "The U-tec Locks integration is not configured.",
+      "authorize_url_timeout": "Timeout generating authorize URL.",
+      "no_url_available": "No URL available for Home Assistant.",
+      "oauth_error": "OAuth error from U-tec.",
+      "oauth_timeout": "Timeout validating OAuth token.",
+      "oauth_unauthorized": "OAuth authorization failed.",
+      "oauth_failed": "OAuth failed.",
+      "reauth_successful": "Re-authentication successful.",
+      "not_implemented": "This step is not implemented yet (scaffold).",
+      "conflicting_integration": "The legacy `{domain}` integration is loaded. Disable or remove it before setting up U-tec Locks."
+    },
+    "create_entry": {
+      "default": "Successfully authenticated with U-tec."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "U-tec Locks options",
+        "description": "Polling interval minimum is 30 seconds and cannot be lowered. Push requires HTTPS (Nabu Casa or a trusted-CA external URL).",
+        "data": {
+          "poll_interval": "Polling interval (seconds, minimum 30)",
+          "use_push": "Use push notifications",
+          "slow_poll_when_push_healthy": "Slow down polling while push is healthy",
+          "push_healthy_poll_interval": "Interval while push is healthy (seconds)",
+          "confirm_commands": "Confirm commands with quick checks"
+        }
+      }
+    },
+    "abort": {
+      "not_implemented": "Options are not implemented yet (scaffold)."
+    }
+  },
+  "issues": {
+    "conflicting_integration": {
+      "title": "U-tec Locks blocked by the u_tec integration",
+      "description": "The legacy `{domain}` integration is loaded. Running both on one U-tec account doubles API requests and they take push from each other, so U-tec Locks will not set up. Disable or remove `{domain}`, then reload U-tec Locks."
+    }
+  },
+  "exceptions": {
+    "command_rejected": {
+      "message": "U-tec rejected the command ({code}): {message}"
+    },
+    "reauth_required": {
+      "message": "Re-authentication with U-tec is required."
+    },
+    "rate_limited": {
+      "message": "U-tec is rate limiting requests; try again in {seconds} s."
+    },
+    "command_outcome_unknown": {
+      "message": "U-tec did not confirm it received the command; the lock may still act. Home Assistant is checking."
+    },
+    "conflicting_integration": {
+      "message": "Setup blocked: the legacy `{domain}` integration is loaded. Disable or remove it first."
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "domain": "utec_locks",
+  "name": "U-tec Locks",
+  "codeowners": ["@rbridal"],
+  "config_flow": true,
+  "dependencies": ["application_credentials", "webhook"],
+  "after_dependencies": ["cloud"],
+  "documentation": "https://github.com/rbridal/ha-utec-locks",
+  "issue_tracker": "https://github.com/rbridal/ha-utec-locks/issues",
+  "iot_class": "cloud_polling",
+  "integration_type": "hub",
+  "loggers": ["custom_components.utec_locks"],
+  "requirements": [],
+  "version": "0.1.0-dev"
+}

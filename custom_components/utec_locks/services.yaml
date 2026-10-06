@@ -1,0 +1,2 @@
+# No custom services in v1. Lock / unlock / mode use platform entity services.
+# Reserved for future opt-in helpers if needed.
