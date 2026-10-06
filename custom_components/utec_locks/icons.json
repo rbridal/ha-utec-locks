@@ -1,13 +1,70 @@
 {
   "entity": {
-    "lock": {
-      "lock": {
-        "default": "mdi:lock"
-      }
-    },
     "select": {
       "lock_mode": {
         "default": "mdi:lock-reset"
+      }
+    },
+    "binary_sensor": {
+      "stale": {
+        "default": "mdi:clock-alert-outline"
+      },
+      "cloud": {
+        "default": "mdi:cloud-check-outline"
+      },
+      "push_healthy": {
+        "default": "mdi:bell-check-outline"
+      }
+    },
+    "sensor": {
+      "battery_level": {
+        "default": "mdi:battery"
+      },
+      "last_report": {
+        "default": "mdi:clock-check-outline"
+      },
+      "api_requests": {
+        "default": "mdi:counter"
+      },
+      "api_requests_24h": {
+        "default": "mdi:chart-timeline-variant"
+      },
+      "api_requests_hour": {
+        "default": "mdi:chart-timeline-variant"
+      },
+      "projected_requests": {
+        "default": "mdi:chart-line"
+      },
+      "api_errors": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "commands_sent": {
+        "default": "mdi:send-lock-outline"
+      },
+      "confirm_queries": {
+        "default": "mdi:check-network-outline"
+      },
+      "pushes_received": {
+        "default": "mdi:bell-ring-outline"
+      },
+      "push_status": {
+        "default": "mdi:bell-outline"
+      },
+      "last_push": {
+        "default": "mdi:bell-badge-outline"
+      },
+      "poll_interval": {
+        "default": "mdi:timer-sync-outline"
+      }
+    },
+    "event": {
+      "command_result": {
+        "default": "mdi:lock-check-outline"
+      }
+    },
+    "button": {
+      "reregister_push": {
+        "default": "mdi:bell-cog-outline"
       }
     }
   }

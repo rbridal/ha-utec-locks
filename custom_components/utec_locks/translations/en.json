@@ -1,23 +1,36 @@
 {
+  "application_credentials": {
+    "description": "Enter the OpenAPI **Client ID** and **Client Secret** from the Xthings Home app (My Account → OpenAPI). Set the Redirect URI there to exactly `{redirect_uri}`. Step-by-step instructions: {more_info_url}"
+  },
   "config": {
     "step": {
       "pick_implementation": {
-        "title": "Sign in with U-tec OpenAPI",
-        "description": "Choose your U-tec OpenAPI credentials (Client ID and Secret from the Xthings Home app)."
+        "title": "Pick authentication method"
+      },
+      "reauth_confirm": {
+        "title": "Sign in to U-tec again",
+        "description": "U-tec Locks needs you to sign in to U-tec again."
       }
     },
     "abort": {
       "already_configured": "This U-tec account is already configured.",
-      "missing_configuration": "The U-tec Locks integration is not configured.",
-      "authorize_url_timeout": "Timeout generating authorize URL.",
-      "no_url_available": "No URL available for Home Assistant.",
-      "oauth_error": "OAuth error from U-tec.",
-      "oauth_timeout": "Timeout validating OAuth token.",
-      "oauth_unauthorized": "OAuth authorization failed.",
-      "oauth_failed": "OAuth failed.",
-      "reauth_successful": "Re-authentication successful.",
-      "not_implemented": "This step is not implemented yet (scaffold).",
-      "conflicting_integration": "The legacy `{domain}` integration is loaded. Disable or remove it before setting up U-tec Locks."
+      "missing_configuration": "The component is not configured. Please follow the documentation.",
+      "missing_credentials": "The integration requires application credentials.",
+      "authorize_url_timeout": "Timeout while generating an authorization URL.",
+      "no_url_available": "No URL available. For information about this error, [check the help section]({docs_url})",
+      "oauth_error": "Received invalid token data.",
+      "oauth_timeout": "Timeout while resolving the OAuth token.",
+      "oauth_unauthorized": "OAuth authorization error while obtaining access token.",
+      "oauth_failed": "Error while obtaining access token.",
+      "oauth_implementation_unavailable": "No OAuth2 implementations are currently available.",
+      "user_rejected_authorize": "Account linking rejected: {error}",
+      "reauth_successful": "Re-authentication was successful",
+      "reconfigure_successful": "Reconfiguration was successful",
+      "conflicting_integration": "The legacy `{domain}` integration is loaded. Disable or remove it before setting up U-tec Locks.",
+      "no_locks": "No locks were found. Check that your locks are selected under OpenAPI in the Xthings Home app.",
+      "invalid_auth": "U-tec rejected the new sign-in. Try again.",
+      "cannot_connect": "Could not reach the U-tec API. Try again later.",
+      "wrong_account": "You signed in to a different U-tec account. Sign in to the account this entry was set up with."
     },
     "create_entry": {
       "default": "Successfully authenticated with U-tec."
@@ -27,29 +40,176 @@
     "step": {
       "init": {
         "title": "U-tec Locks options",
-        "description": "Polling interval minimum is 30 seconds and cannot be lowered. Push requires HTTPS (Nabu Casa or a trusted-CA external URL).",
+        "description": "The polling interval cannot be lower than 30 seconds. Push needs Home Assistant Cloud or an external HTTPS URL.",
         "data": {
-          "poll_interval": "Polling interval (seconds, minimum 30)",
+          "poll_interval": "Polling interval",
           "use_push": "Use push notifications",
           "slow_poll_when_push_healthy": "Slow down polling while push is healthy",
-          "push_healthy_poll_interval": "Interval while push is healthy (seconds)",
+          "push_healthy_poll_interval": "Interval while push is healthy",
           "confirm_commands": "Confirm commands with quick checks"
+        },
+        "data_description": {
+          "poll_interval": "30 to 3,600 seconds. 30 seconds is the minimum and cannot be lowered.",
+          "use_push": "Needs Home Assistant Cloud (Nabu Casa) or an external HTTPS URL. Plain HTTP is never used for push.",
+          "slow_poll_when_push_healthy": "Poll less often while push is proven to deliver changes. Returns to the normal interval at the first missed change.",
+          "push_healthy_poll_interval": "60 to 1,800 seconds (recommended 120). Only used with the option above.",
+          "confirm_commands": "Up to 10 quick checks over about 56 seconds after each of your lock, unlock or mode commands."
+        }
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "lock_mode": {
+        "name": "Lock mode",
+        "state": {
+          "normal": "Normal",
+          "passage": "Passage",
+          "locked": "Locked (mode 2)"
+        },
+        "state_attributes": {
+          "pending_mode": {
+            "name": "Pending mode"
+          }
         }
       }
     },
-    "abort": {
-      "not_implemented": "Options are not implemented yet (scaffold)."
+    "binary_sensor": {
+      "door": {
+        "name": "Door"
+      },
+      "battery_low": {
+        "name": "Battery"
+      },
+      "stale": {
+        "name": "Status stale"
+      },
+      "cloud": {
+        "name": "Cloud connection"
+      },
+      "push_healthy": {
+        "name": "Push healthy"
+      }
+    },
+    "sensor": {
+      "battery_level": {
+        "name": "Battery level",
+        "state": {
+          "critically_low": "Critically low",
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "full": "Full"
+        }
+      },
+      "battery_pct": {
+        "name": "Battery (percent)"
+      },
+      "last_report": {
+        "name": "Last report"
+      },
+      "api_requests": {
+        "name": "API requests"
+      },
+      "api_requests_24h": {
+        "name": "API requests (last 24 h)"
+      },
+      "api_requests_hour": {
+        "name": "API requests (last hour)"
+      },
+      "projected_requests": {
+        "name": "Projected requests per day"
+      },
+      "api_errors": {
+        "name": "API errors"
+      },
+      "commands_sent": {
+        "name": "Commands sent"
+      },
+      "confirm_queries": {
+        "name": "Confirmation queries"
+      },
+      "pushes_received": {
+        "name": "Pushes received"
+      },
+      "push_status": {
+        "name": "Push status",
+        "state": {
+          "disabled": "Disabled",
+          "no_url": "No URL",
+          "registration_failed": "Registration failed",
+          "unverified": "Unverified",
+          "healthy": "Healthy",
+          "degraded": "Degraded",
+          "unhealthy": "Unhealthy"
+        }
+      },
+      "last_push": {
+        "name": "Last push"
+      },
+      "poll_interval": {
+        "name": "Poll interval in use"
+      }
+    },
+    "event": {
+      "command_result": {
+        "name": "Command result",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "confirmed": "Confirmed",
+              "not_confirmed": "Not confirmed",
+              "rejected": "Rejected"
+            }
+          }
+        }
+      }
+    },
+    "button": {
+      "reregister_push": {
+        "name": "Re-register push"
+      }
     }
   },
   "issues": {
     "conflicting_integration": {
       "title": "U-tec Locks blocked by the u_tec integration",
       "description": "The legacy `{domain}` integration is loaded. Running both on one U-tec account doubles API requests and they take push from each other, so U-tec Locks will not set up. Disable or remove `{domain}`, then reload U-tec Locks."
+    },
+    "push_unhealthy": {
+      "title": "U-tec push notifications are not working",
+      "description": "For the last 24 hours U-tec push has not delivered lock changes (or could not be registered). Lock state can lag behind changes made at the lock or in the U-tec app by up to the polling interval. Polling continues as normal.\n\nCheck that Home Assistant Cloud is connected, or that your external HTTPS URL is reachable from the internet. This repair clears itself when push is healthy again."
+    },
+    "push_no_https_url": {
+      "title": "No HTTPS URL for U-tec push",
+      "description": "Push notifications are on, but Home Assistant has no Home Assistant Cloud webhook and no external HTTPS URL. Push is only ever registered over HTTPS because the push secret travels in a request header.\n\nSet up Home Assistant Cloud, or set an external HTTPS URL under Settings → System → Network, then reload U-tec Locks. Everything keeps working on polling in the meantime. You can also turn push off in the integration options."
+    },
+    "rate_limited": {
+      "title": "U-tec is rate limiting requests",
+      "description": "U-tec answered with \"too many requests\" three or more times in the last hour. The integration is backing off. Check the API request sensors on the U-tec account device, and consider a longer polling interval. This repair clears after 24 hours without rate limiting."
+    },
+    "command_loop": {
+      "title": "Many commands sent to {name}",
+      "description": "{count} lock commands were sent to {name} within 10 minutes. This often means an automation is fighting the lock's auto-lock. If you want the door to stay unlocked, use the Lock mode select and choose Passage instead. Commands are never blocked."
+    },
+    "lock_removed": {
+      "title": "{name} is no longer on your U-tec account",
+      "fix_flow": {
+        "step": {
+          "confirm": {
+            "title": "Remove {name}?",
+            "description": "{name} was missing from the last two U-tec discoveries, so its entities are unavailable. If you removed it from the Xthings Home app (or deselected it under OpenAPI), submit to delete the device from Home Assistant. If it comes back, it will be added again automatically."
+          }
+        }
+      }
     }
   },
   "exceptions": {
     "command_rejected": {
-      "message": "U-tec rejected the command ({code}): {message}"
+      "message": "U-tec rejected the command ({code})."
+    },
+    "device_offline": {
+      "message": "U-tec says the lock is offline and cannot accept commands ({code})."
     },
     "reauth_required": {
       "message": "Re-authentication with U-tec is required."
@@ -62,6 +222,24 @@
     },
     "conflicting_integration": {
       "message": "Setup blocked: the legacy `{domain}` integration is loaded. Disable or remove it first."
+    },
+    "api_unreachable": {
+      "message": "Could not reach the U-tec API ({error})."
+    },
+    "credentials_unavailable": {
+      "message": "The U-tec application credentials are not available yet."
+    },
+    "lock_not_found": {
+      "message": "This lock is not on the U-tec account."
+    },
+    "invalid_mode": {
+      "message": "Unknown lock mode: {option}."
+    },
+    "push_disabled": {
+      "message": "Push notifications are turned off in the integration options."
+    },
+    "push_register_cooldown": {
+      "message": "Push was re-registered less than 5 minutes ago. Try again later."
     }
   }
 }

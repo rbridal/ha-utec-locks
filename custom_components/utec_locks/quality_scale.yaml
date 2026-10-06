@@ -1,8 +1,86 @@
-# Quality-scale target: Silver complete, most of Gold (see docs/DESIGN.md).
-# Scaffold placeholder — fill rules as milestones land.
+# Integration quality scale self-assessment (custom integration; informational).
+# Target: Silver complete, most of Gold (docs/DESIGN.md section 15).
 rules:
-  config-flow: todo
-  entity-unique-id: todo
-  appropriate-polling: done
-  # Deviation: firm 30 s floor; interval configurable upward only.
-  # Deviation: stale locks stay available (unknown) so commands are not dropped.
+  # Bronze
+  action-setup:
+    status: exempt
+    comment: No integration-specific actions; lock/select/button platforms only.
+  appropriate-polling:
+    status: done
+    comment: >
+      One batched Query per account cycle, 30 s firm floor and default (scheduler
+      pads +1 s so polls are never closer than 30 s). Optional 120 s while push is
+      healthy (off by default).
+  brands:
+    status: done
+    comment: Local brand PNGs in brand/ (HA 2026.3+); not yet in home-assistant/brands.
+  common-modules: done
+  config-flow-test-coverage: done
+  config-flow: done
+  dependency-transparency:
+    status: done
+    comment: No external requirements; the API client lives in this repository.
+  docs-actions:
+    status: exempt
+    comment: No integration-specific actions.
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure: done
+  test-before-setup: done
+  unique-config-entry: done
+
+  # Silver
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: done
+  docs-installation-parameters: done
+  entity-unavailable:
+    status: done
+    comment: >
+      Deliberate deviation: stale or cloud-offline locks stay available and show
+      unknown (with stale/last_known_state attributes) so commands are never
+      blocked; unavailable only when a lock leaves the account.
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: done
+  reauthentication-flow: done
+  test-coverage:
+    status: done
+    comment: About 95 % line coverage with a mocked U-tec cloud.
+
+  # Gold
+  devices: done
+  diagnostics: done
+  discovery-update-info:
+    status: exempt
+    comment: Cloud service; nothing to discover on the network.
+  discovery:
+    status: exempt
+    comment: Cloud service; nothing to discover on the network.
+  docs-data-update: done
+  docs-examples: todo
+  docs-known-limitations: done
+  docs-supported-devices: done
+  docs-supported-functions: done
+  docs-troubleshooting: done
+  docs-use-cases: todo
+  dynamic-devices: done
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default: done
+  entity-translations: done
+  exception-translations: done
+  icon-translations: done
+  reconfiguration-flow: done
+  repair-issues: done
+  stale-devices: done
+
+  # Platinum
+  async-dependency: done
+  inject-websession: done
+  strict-typing: todo
