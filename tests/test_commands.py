@@ -261,18 +261,73 @@ async def test_batched_across_locks(
     assert all(sorted(q) == sorted([LOCK1, LOCK2]) for q in ids)
 
 
-async def test_deferred_hint_skips_early_ticks(
-    hass: HomeAssistant, loaded, cloud: FakeUtecCloud, freezer
+@pytest.mark.parametrize(
+    ("command", "entity", "deferred"),
+    [("unlock", FRONT, 20), ("lock", SHOP, 20), ("set_mode", FRONT_MODE, 5)],
+)
+async def test_deferred_hint_ignored_by_default(
+    hass: HomeAssistant, loaded, cloud: FakeUtecCloud, freezer, events, command, entity, deferred
 ) -> None:
-    """deferredResponse 20 s: ticks before 20 s are skipped."""
+    """Default: the full 1/1/1/1/2/3/5/8/13/21 s schedule despite 'result in N s'."""
     from homeassistant.util import dt as dt_util
 
+    cloud.apply_commands = False
+    cloud.deferred_seconds = deferred
+    start = dt_util.utcnow()
+    if command == "set_mode":
+        await call_mode(hass, "passage")
+    else:
+        await call_lock(hass, command, entity)
+    await advance(hass, freezer, 89)
+    assert query_offsets(cloud, start) == [1, 2, 3, 4, 6, 9, 14, 22, 35, 56]
+    assert events == []
+    await advance(hass, freezer, 2)
+    # The ~90 s unconfirmed timeout still holds.
+    assert [e.data["result"] for e in events] == ["not_confirmed"]
+    assert events[0].data["queries"] == 10
+    assert 89 <= events[0].data["seconds"] <= 91
+
+
+async def test_deferred_hint_confirms_on_first_tick(
+    hass: HomeAssistant, loaded, cloud: FakeUtecCloud, freezer, events
+) -> None:
+    """A deferred 20 s reply no longer delays confirmation to 22 s."""
+    cloud.deferred_seconds = 20
+    await call_lock(hass, "unlock", FRONT)
+    await advance(hass, freezer, 1)
+    assert events[0].data["result"] == "confirmed"
+    assert events[0].data["seconds"] <= 1.5
+    assert hass.states.get(FRONT).state == STATE_UNLOCKED
+
+
+async def test_deferred_hint_switch_on_skips_early_ticks(
+    hass: HomeAssistant, loaded, cloud: FakeUtecCloud, freezer, events
+) -> None:
+    """With the (non-default) switch on, ticks before the hint are skipped."""
+    from homeassistant.util import dt as dt_util
+
+    runtime(loaded).commands.honor_deferred = True
     cloud.apply_commands = False
     cloud.deferred_seconds = 20
     start = dt_util.utcnow()
     await call_lock(hass, "unlock", FRONT)
     await advance(hass, freezer, 91)
     assert query_offsets(cloud, start) == [22, 35, 56]
+    assert [e.data["result"] for e in events] == ["not_confirmed"]
+
+
+def test_absolute_ticks() -> None:
+    """Pure schedule helper: default ignores the hint."""
+    from custom_components.utec_locks.commands import absolute_ticks
+    from custom_components.utec_locks.const import HONOR_DEFERRED_HINT
+
+    full = [1, 2, 3, 4, 6, 9, 14, 22, 35, 56]
+    assert HONOR_DEFERRED_HINT is False
+    assert absolute_ticks() == full
+    assert absolute_ticks(deferred=20) == full
+    assert absolute_ticks(deferred=5) == full
+    assert absolute_ticks(deferred=20, honor_deferred=True) == [22, 35, 56]
+    assert absolute_ticks(deferred=5, honor_deferred=True) == [6, 9, 14, 22, 35, 56]
 
 
 async def test_confirm_disabled_waits_for_push_or_poll(

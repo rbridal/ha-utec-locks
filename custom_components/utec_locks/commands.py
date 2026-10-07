@@ -84,10 +84,19 @@ _API_NAMES = {CMD_LOCK: "lock", CMD_UNLOCK: "unlock", CMD_SET_MODE: "setMode"}
 def absolute_ticks(
     schedule: tuple[int, ...] = CONFIRMATION_SCHEDULE_SECONDS,
     deferred: int | None = None,
+    *,
+    honor_deferred: bool | None = None,
 ) -> list[float]:
-    """Absolute tick offsets (s); ticks before ``deferred`` are skipped."""
+    """Absolute tick offsets (s) after the command reply.
+
+    By default the full schedule runs regardless of the deferred hint. Only
+    when ``honor_deferred`` (default: ``HONOR_DEFERRED_HINT``, off) is set are
+    ticks before ``deferred`` skipped.
+    """
+    if honor_deferred is None:
+        honor_deferred = HONOR_DEFERRED_HINT
     ticks = list(itertools.accumulate(float(s) for s in schedule))
-    if HONOR_DEFERRED_HINT and deferred:
+    if honor_deferred and deferred:
         ticks = [t for t in ticks if t >= deferred]
     return ticks
 
@@ -158,6 +167,7 @@ class CommandExecutor:
         self._result_listeners: defaultdict[str, list[ResultListener]] = defaultdict(list)
         self._state_listeners: list[CALLBACK_TYPE] = []
         self.last_results: dict[str, str] = {}
+        self.honor_deferred = HONOR_DEFERRED_HINT
         self.rng = random.Random()
         self.sleep: Callable[[float], Any] = asyncio.sleep
 
@@ -330,7 +340,8 @@ class CommandExecutor:
         pending.deferred = deferred
         if self._entry.options.get(CONF_CONFIRM_COMMANDS, True):
             pending.ticks = deque(
-                now + timedelta(seconds=t) for t in absolute_ticks(deferred=deferred)
+                now + timedelta(seconds=t)
+                for t in absolute_ticks(deferred=deferred, honor_deferred=self.honor_deferred)
             )
 
         @callback

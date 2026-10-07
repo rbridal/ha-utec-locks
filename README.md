@@ -2,7 +2,7 @@
 
 A community integration for U-tec / Ultraloq smart locks, using U-tec's OpenAPI and your own API credentials.
 
-> **Status: 0.1.0 pre-release, for hardware testing.** Expect rough edges and report them in [issues](https://github.com/rbridal/ha-utec-locks/issues).
+> **Status: 0.1.1 pre-release, for hardware testing.** Expect rough edges and report them in [issues](https://github.com/rbridal/ha-utec-locks/issues).
 
 **Not made, endorsed, or supported by U-tec or Xthings.** Please report problems with this integration [here](https://github.com/rbridal/ha-utec-locks/issues), not to U-tec support.
 
@@ -88,7 +88,7 @@ You can add more than one U-tec account. Each account is its own entry.
 
 - **Polling.** Every 30 seconds (you can choose longer, not shorter), Home Assistant asks U-tec for the state of all your locks in one request. Ten locks cost the same as one.
 - **Push.** If push is set up and working, U-tec tells Home Assistant about changes as they happen. The integration keeps an eye on whether push is actually delivering changes (see [Push notifications](#push-notifications)), and it never stops polling, because push can stop without warning.
-- **After your commands.** When you lock, unlock, or change mode from Home Assistant, it checks that lock up to 10 times over about 56 seconds (intervals 1/1/1/1/2/3/5/8/13/21 s) until the change shows up.
+- **After your commands.** When you lock, unlock, or change mode from Home Assistant, it checks that lock up to 10 times over about 56 seconds (intervals 1/1/1/1/2/3/5/8/13/21 s, starting 1 second after U-tec accepts the command) until the change shows up. U-tec's reply often says the result will take up to 20 seconds; the integration checks from the first second anyway, so a fast lock is confirmed quickly. If nothing confirms the change, it gives up after about 90 seconds (see below).
 - **When it doesn't know.** If Home Assistant hasn't had a good report from a lock for 2 minutes (at the default interval), the lock shows **unknown** and **Status stale** turns on. The lock's attributes still show the last known state and when it was reported. The lock stays usable, so you can still lock and unlock it.
 
 ## Lock and unlock: what to expect

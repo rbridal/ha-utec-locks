@@ -138,8 +138,10 @@ COMMAND_RETRY_DELAY_RANGE: Final = (1.0, 2.0)
 COMMAND_SHORT_RETRY_AFTER: Final = 5.0
 COMMAND_LOOP_LIMIT: Final = 6
 COMMAND_LOOP_WINDOW: Final = timedelta(minutes=10)
-# Honor st.deferredResponse: skip ticks before the hint (DESIGN 8.3).
-HONOR_DEFERRED_HINT: Final = True
+# st.deferredResponse ("result in N s") is IGNORED by default: the full
+# 1/1/1/1/2/3/5/8/13/21 s schedule always runs (Rob, 2026-10-06, DESIGN 8.3).
+# Set True to skip ticks that would fire before the hint.
+HONOR_DEFERRED_HINT: Final = False
 
 # Push
 PUSH_MAX_BODY_BYTES: Final = 64 * 1024

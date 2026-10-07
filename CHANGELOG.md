@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-06
+
+Pre-release for hardware testing.
+
+### Changed
+
+- The confirmation schedule (checks at 1/1/1/1/2/3/5/8/13/21 s) now always runs
+  in full after lock, unlock and setMode, whatever U-tec's "result in N s"
+  (`st.deferredResponse`) reply says (Rob's decision). In 0.1.0 a 20 s hint
+  delayed the first check to 22 s. Honoring the hint is still possible through the
+  `HONOR_DEFERRED_HINT` switch, which now defaults to off. The unconfirmed
+  timeout of about 90 s is unchanged.
+
 ## [0.1.0] - 2026-10-06
 
 First pre-release, for hardware testing. Requires Home Assistant 2026.3.0 or newer.
@@ -54,5 +67,6 @@ First pre-release, for hardware testing. Requires Home Assistant 2026.3.0 or new
 - Initial repository scaffold for the `utec_locks` Home Assistant custom integration (0.1.0-dev).
 - Packaging stubs: `manifest.json`, `hacs.json`, MIT license, draft README, design document under `docs/`.
 
-[Unreleased]: https://github.com/rbridal/ha-utec-locks/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/rbridal/ha-utec-locks/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/rbridal/ha-utec-locks/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rbridal/ha-utec-locks/releases/tag/v0.1.0
