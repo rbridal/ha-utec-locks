@@ -103,19 +103,19 @@ Commands are never queued for later. If a command fails, it fails now, not as a 
 
 ## Lock mode and Passage
 
-Each lock has a **Lock mode** select with U-tec's three modes:
+Each lock has a **Lock mode** select with U-tec's three modes. Behavior below was verified on a shop **Latch-5-NFC** (integration v0.1.1); other models may differ.
 
 | Mode | What it does |
 |---|---|
-| Normal | Regular operation. |
-| Passage | The lock stays unlocked. On latch models this is the only way to stop auto-lock. |
-| Locked (mode 2) | U-tec's documentation names this mode but doesn't describe it. (to verify) Test it with a key at hand before relying on it. |
+| Normal | Regular operation. On Latch-5-NFC, entering Normal locks the door and auto-lock behaves as usual. |
+| Passage | The lock auto-unlocks and stays unlocked. On latch models this is the only way to stop auto-lock. Verified on Latch-5-NFC: Passage held the door unlocked through a 5+ minute auto-lock window (shop hours / alarm disarmed). An unlock command while already in Passage produces an odd beep and no change. |
+| Locked (mode 2) | The door locks. RFID / credentials are denied (red flash on Latch-5-NFC). Home Assistant shows locked. U-tec's docs name this mode but do not describe it; this is hardware-verified behavior on Latch-5-NFC. |
 
 The select shows the mode the lock last reported. Choosing a mode always sends the command, then Home Assistant checks until the lock reports the new mode.
 
 **Latch auto-lock.** U-tec latch locks lock themselves after a while, and that can't be turned off. If you want a door to stay open during the day, use Passage mode rather than an automation that keeps unlocking it. One command instead of dozens, and the door never relocks in between. If more than 6 commands go to one lock within 10 minutes, Home Assistant shows a repair suggesting Passage mode.
 
-When you switch from Passage back to Normal, what the bolt does next depends on the model (to verify). If you want the door locked at closing time, add a lock action after the mode change (see the example below).
+On Latch-5-NFC, switching from Passage back to Normal locks the door. If you want the door locked at closing time, still add a lock action after the mode change as a belt-and-suspenders step (see the example below).
 
 ## Options
 
@@ -264,14 +264,14 @@ To turn on debug logs: **Settings → Devices & services → U-tec Locks → Ena
 - State changes made at the lock or in the U-tec app can take up to the polling interval (30 seconds by default) to show up when push isn't working, and longer during U-tec outages.
 - U-tec reports battery in five steps, not a percentage.
 - U-tec's API has no auto-lock setting. Use Passage mode to keep a latch open.
-- What "Locked (mode 2)" does is not documented by U-tec (to verify).
+- U-tec does not document what "Locked (mode 2)" does; on Latch-5-NFC it locks the door and denies RFID (see [Lock mode](#lock-mode-and-passage)). Other models may differ.
 - Lock users and PIN codes can't be managed from this integration.
 - No local control. Everything goes through U-tec's cloud.
 - U-tec's API exposes no Wi-Fi bridge or other non-lock devices to this integration, and lights, switches and plugs are deliberately not supported.
 
 ## Supported devices
 
-Any U-tec / Ultraloq lock that appears in the U-tec OpenAPI with category `SmartLock` (handle types `utec-lock` and `utec-lock-sensor`). Tested so far: (list filled in after the soak).
+Any U-tec / Ultraloq lock that appears in the U-tec OpenAPI with category `SmartLock` (handle types `utec-lock` and `utec-lock-sensor`). Tested so far: **Latch-5-NFC** (shop door; lock/unlock, Normal, Passage, and Locked mode verified on v0.1.1).
 
 ## Diagnostics and privacy
 

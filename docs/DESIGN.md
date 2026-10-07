@@ -111,9 +111,9 @@ This section is why the existing code was studied. Everything here is about the 
 | A20 | Per-device errors appear in `payload.devices[].error`, for example `DEVICE_OFFLINE` ("Device is offline and cannot accept commands"). | [Doc] (switch examples; same envelope for all devices) |
 | A21 | Query intermittently returns HTTP 500, "sometimes twice in a row, sometimes more". | [Field] #24, #49, #68 (Rob's own comment) |
 | A22 | Commands can be accepted and still not move the lock: "6 of 12 front-door lock commands never moved the lock while HA showed locked". | [Field] #68 (three U-Bolt Pro WiFi locks) |
-| A23 | `setMode` shape is `{"capability":"st.lock","name":"setMode","arguments":{"mode":N}}`. | [Doc]. Hardware behavior [Unknown]: Rob's test script exists, results pending |
-| A24 | What mode 2 ("Locked") does on real hardware is not documented. | [Unknown] |
-| A25 | Latch locks auto-lock and that cannot be disabled except via Passage mode. The API exposes no auto-lock setting or timer. | Rob's lessons learned; [Doc] shows no such capability |
+| A23 | `setMode` shape is `{"capability":"st.lock","name":"setMode","arguments":{"mode":N}}`. | [Doc]. Hardware behavior on Latch-5-NFC [Field] (Rob, October 6, 2026): see A24–A25 and Passage notes below |
+| A24 | Mode 2 ("Locked") on Latch-5-NFC: door locks; RFID / credentials denied (red flash); Home Assistant reports locked. U-tec still does not document the mode. Other models not yet verified. | [Field] Rob Shop Latch-5-NFC hardware verification, October 6, 2026; [Doc] (absence of vendor description) |
+| A25 | Latch locks auto-lock and that cannot be disabled except via Passage mode. The API exposes no auto-lock setting or timer. On Latch-5-NFC, Passage auto-unlocks and stays unlocked through a 5+ minute auto-lock window; entering Normal locks the door and restores normal auto-lock. An unlock command while already in Passage produces an odd beep and no change. | Rob's lessons learned; [Doc] shows no such capability; [Field] Latch-5-NFC verification October 6, 2026 |
 | A26 | No rate limits, quotas, or 429 behavior are published. The Xthings developer page lists "Authentication & Rate Limits" as a topic with nothing behind it. | [Doc] (absence), prior report Section 4.1 |
 | A27 | The vendor's own core integration (`xthings_cloud`, different backend) is `cloud_push` with a fixed 30-minute fallback poll. | [Code] core PR #167885, per prior report |
 
@@ -434,7 +434,7 @@ This departs from the literal Silver `entity-unavailable` rule. The deviation an
 - not stale or unknown state, not cloud offline,
 - not push health, not background backoff or an open circuit.
 
-**Decided (Rob, October 6, 2026):** always send lock, unlock, and mode commands regardless of Passage, cache, stale, or offline — **always send, no pre-check**. A pre-check would cost the same single request as the command, add delay to a security action, and still cannot be fully trusted given eventual consistency. If the cached mode is Passage when a lock command arrives, the command is still sent, a warning is logged ("Front Door is in Passage mode; the lock may ignore lock commands until the mode is Normal"), and the confirmation result tells the user what actually happened. What a lock in Passage does with a lock command is itself [Unknown]; the soak should find out.
+**Decided (Rob, October 6, 2026):** always send lock, unlock, and mode commands regardless of Passage, cache, stale, or offline — **always send, no pre-check**. A pre-check would cost the same single request as the command, add delay to a security action, and still cannot be fully trusted given eventual consistency. If the cached mode is Passage when a lock command arrives, the command is still sent, a warning is logged ("Front Door is in Passage mode; the lock may ignore lock commands until the mode is Normal"), and the confirmation result tells the user what actually happened. **[Field] Latch-5-NFC (October 6, 2026):** unlock while already in Passage produces an odd beep and no change; Passage itself auto-unlocks and holds unlocked (including through a 5+ minute auto-lock window). Lock-while-in-Passage on other models remains model-dependent; the warning stays.
 
 The only thing that can stop a command reaching U-tec is U-tec itself (errors, rate limiting), and the user always sees that as an error.
 
@@ -519,7 +519,7 @@ None. Commands are accepted without being executed often enough to matter (A22),
 
 **Decided (Rob, October 6, 2026):** battery entities are low binary sensor **on**, 5-step enum **on**, percent sensor **off** by default.
 
-Mode 2 ("Locked") is offered because the API documents it, and labeled "Locked (mode 2)" because what it does is undocumented [Unknown]. **Decided (Rob, October 6, 2026):** show mode 2 in the lock-mode select from day one; do not hide it until tested.
+Mode 2 ("Locked") is offered because the API documents it, and labeled "Locked (mode 2)" because U-tec does not describe it in docs. **[Field] Latch-5-NFC (October 6, 2026):** entering Locked locks the door, RFID flashes red / denied, and HA shows locked. **Decided (Rob, October 6, 2026):** show mode 2 in the lock-mode select from day one; do not hide it until tested. Other models still need soak coverage.
 
 ## 9.2 Account (device "U-tec account", `entry_type=service`)
 
@@ -712,10 +712,10 @@ GitHub Actions: `ruff` (lint and format), `mypy --strict`, `pytest --cov` with `
 
 At least two weeks on Rob's locks, including the shop latch, with a written checklist:
 
-1. Lock and unlock from HA: time to confirm, and whether a push arrived.
+1. Lock and unlock from HA: time to confirm, and whether a push arrived. **Partial [Field] Latch-5-NFC:** lock/unlock works; confirmation schedule 1/1/1/1/2/3/5/8/13/21 felt more responsive (v0.1.1). Push timing still open.
 2. Keypad and thumb-turn changes: does a push arrive at all (P10)? How long until polling shows the change?
-3. `setMode` to Passage and back to Normal: confirmation, time, push. Mode 2: what it does and how to leave it (test with a physical key at hand).
-4. Lock command while in Passage: ignored, rejected, or performed?
+3. `setMode` to Passage and back to Normal: confirmation, time, push. Mode 2: what it does and how to leave it (test with a physical key at hand). **Done for Latch-5-NFC [Field]:** Passage auto-unlocks and holds; Normal locks and behaves normally; Locked (mode 2) locks door, RFID denied (red flash), HA shows locked. Push timing and other models still open.
+4. Lock / unlock while in Passage: ignored, rejected, or performed? **Partial [Field] Latch-5-NFC:** unlock while in Passage → odd beep, no change. Lock-while-in-Passage still open for other models.
 5. Behavior with and without `customData` in Query and Command (A11).
 6. Push secret rotation: any pushes rejected around the rotation?
 7. Daily request totals compared with the projection sensor.
@@ -832,7 +832,7 @@ Automatic migration is out of scope **(Rob's call** if an importer is wanted lat
 | 18.2 | Push conflict with `u_tec` or another client on the same account | Medium [Assumed] | Silent loss of push | **Setup blocked** while `u_tec` is loaded; README migration steps |
 | 18.3 | U-tec introduces rate limits, possibly as HTTP 200 envelopes | Medium | Throttled or blocked accounts | Floor, batching, backoff, 429 handling, per-code envelope counts, User-Agent, usage sensors |
 | 18.4 | `customData` is required for some locks or commands | Unknown [Doc A11] | Commands quietly ignored | Send it (camelCase) when discovery provides it, behind a constant that can switch it off; test in the soak |
-| 18.5 | `setMode` or mode 2 behaves unexpectedly | Medium [Unknown] | Keypad lockout or a lock stuck in a mode | "Locked (mode 2)" label, README caution, soak test with a key at hand (mode 2 is shown from day one; decided not to hide until tested) |
+| 18.5 | `setMode` or mode 2 behaves unexpectedly on untested models | Low–Medium [Field on Latch-5-NFC; other models open] | Keypad lockout or a lock stuck in a mode | "Locked (mode 2)" label; README documents Latch-5-NFC semantics; continue soak on other models (mode 2 shown from day one) |
 | 18.6 | Accepted commands that never execute | Medium [Field A22] | Wrong state if shown optimistically | No optimism; confirmation; `not_confirmed` events |
 | 18.7 | Payload drift (casing, shapes) | High [Doc][Field] | Parse failures | Lenient case-insensitive parser; fixtures for every known shape; malformed counts in diagnostics |
 | 18.8 | Vendor endpoint or brand change (U-tec to Xthings), or API shutdown | Low to medium | Integration stops working | Endpoints in one constants file; nothing can prevent a shutdown; README says community and unaffiliated |
@@ -917,7 +917,7 @@ For each ref (`origin/main`, `feat/lock-mode-select`), every tracked `.py` file 
 
 # Appendix D. Draft README.md
 
-The full draft README follows (also saved as `README.draft.md`). Headings are demoted one level here; in-page links are shown as plain text. Domain `utec_locks` and repo `rbridal/ha-utec-locks` are decided (Section 17.1); all Section 19 decisions are locked. "(to verify)" marks items that depend on the hardware soak.
+The full draft README follows (also saved as `README.draft.md`). Headings are demoted one level here; in-page links are shown as plain text. Domain `utec_locks` and repo `rbridal/ha-utec-locks` are decided (Section 17.1); all Section 19 decisions are locked. Latch-5-NFC mode semantics were verified October 6, 2026 (see A23–A25); keep the live `README.md` as the source of truth if this appendix drifts.
 
 ## U-tec Locks for Home Assistant
 
@@ -1026,15 +1026,15 @@ Each lock has a **Lock mode** select with U-tec's three modes:
 
 | Mode | What it does |
 |---|---|
-| Normal | Regular operation. |
-| Passage | The lock stays unlocked. On latch models this is the only way to stop auto-lock. |
-| Locked (mode 2) | U-tec's documentation names this mode but doesn't describe it. (to verify) Test it with a key at hand before relying on it. |
+| Normal | Regular operation. On Latch-5-NFC, entering Normal locks the door and auto-lock behaves as usual. |
+| Passage | The lock auto-unlocks and stays unlocked. On latch models this is the only way to stop auto-lock. Verified on Latch-5-NFC: Passage held the door unlocked through a 5+ minute auto-lock window. An unlock command while already in Passage produces an odd beep and no change. |
+| Locked (mode 2) | The door locks. RFID / credentials are denied (red flash on Latch-5-NFC). Home Assistant shows locked. U-tec's docs name this mode but do not describe it; hardware-verified on Latch-5-NFC. |
 
 The select shows the mode the lock last reported. Choosing a mode always sends the command, then Home Assistant checks until the lock reports the new mode.
 
 **Latch auto-lock.** U-tec latch locks lock themselves after a while, and that can't be turned off. If you want a door to stay open during the day, use Passage mode rather than an automation that keeps unlocking it. One command instead of dozens, and the door never relocks in between. If more than 6 commands go to one lock within 10 minutes, Home Assistant shows a repair suggesting Passage mode.
 
-When you switch from Passage back to Normal, what the bolt does next depends on the model (to verify). If you want the door locked at closing time, add a lock action after the mode change (see the example below).
+On Latch-5-NFC, switching from Passage back to Normal locks the door. If you want the door locked at closing time, still add a lock action after the mode change as a belt-and-suspenders step (see the example below).
 
 ### Options
 
@@ -1183,14 +1183,14 @@ To turn on debug logs: **Settings → Devices & services → U-tec Locks → Ena
 - State changes made at the lock or in the U-tec app can take up to the polling interval (30 seconds by default) to show up when push isn't working, and longer during U-tec outages.
 - U-tec reports battery in five steps, not a percentage.
 - U-tec's API has no auto-lock setting. Use Passage mode to keep a latch open.
-- What "Locked (mode 2)" does is not documented by U-tec (to verify).
+- U-tec does not document what "Locked (mode 2)" does; on Latch-5-NFC it locks the door and denies RFID. Other models may differ.
 - Lock users and PIN codes can't be managed from this integration.
 - No local control. Everything goes through U-tec's cloud.
 - U-tec's API exposes no Wi-Fi bridge or other non-lock devices to this integration, and lights, switches and plugs are deliberately not supported.
 
 ### Supported devices
 
-Any U-tec / Ultraloq lock that appears in the U-tec OpenAPI with category `SmartLock` (handle types `utec-lock` and `utec-lock-sensor`). Tested so far: (list filled in after the soak).
+Any U-tec / Ultraloq lock that appears in the U-tec OpenAPI with category `SmartLock` (handle types `utec-lock` and `utec-lock-sensor`). Tested so far: **Latch-5-NFC** (shop door; lock/unlock, Normal, Passage, and Locked mode verified on v0.1.1).
 
 ### Diagnostics and privacy
 

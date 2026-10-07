@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- README and DESIGN: document Latch-5-NFC hardware verification for Normal,
+  Passage, and Locked (mode 2); remove speculative "(to verify)" language.
+
 ## [0.1.1] - 2026-10-06
 
 Pre-release for hardware testing.
