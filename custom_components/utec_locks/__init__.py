@@ -90,7 +90,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: UtecConfigEntry) -> bool
     integration = await async_get_integration(hass, DOMAIN)
     client = UtecClient(
         async_get_clientsession(hass),
-        OAuthTokenProvider(hass, entry, session, on_refresh=usage.record_token_refresh),
+        OAuthTokenProvider(
+            hass,
+            entry,
+            session,
+            on_refresh=usage.record_token_refresh,
+            observer=usage.record_token_request,
+        ),
         user_agent=USER_AGENT_TEMPLATE.format(version=integration.version),
         observer=usage.record_request,
         send_custom_data=SEND_CUSTOM_DATA,
@@ -205,6 +211,9 @@ async def async_remove_config_entry_device(
             return False
         if coordinator.is_available(identifier):
             return False
+    for domain, identifier in device.identifiers:
+        if domain == DOMAIN:
+            entry.runtime_data.usage.forget_lock(identifier)
     return True
 
 

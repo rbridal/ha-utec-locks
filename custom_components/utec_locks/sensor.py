@@ -1,4 +1,4 @@
-"""Sensors: battery level/percent and last report per lock; account usage."""
+"""Sensors: battery, last report and offline reports per lock; account usage and API timing."""
 
 from __future__ import annotations
 
@@ -73,6 +73,20 @@ LOCK_SENSORS: tuple[LockSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda e: e.snapshot.lock_state_at,
+    ),
+    LockSensorDescription(
+        key="offline_reports",
+        translation_key="offline_reports",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda e: e.coordinator.usage.offline_report_count(e.device_id),
+    ),
+    LockSensorDescription(
+        key="last_offline_report",
+        translation_key="last_offline_report",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda e: e.coordinator.usage.last_offline_report(e.device_id),
     ),
 )
 
@@ -174,6 +188,28 @@ ACCOUNT_SENSORS: tuple[AccountSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda c: round(c.interval_in_use),
+    ),
+    AccountSensorDescription(
+        key="api_response_time_last",
+        translation_key="api_response_time_last",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+        suggested_display_precision=0,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.usage.latency.last_ms,
+        attrs_fn=lambda c: c.usage.latency.last_attributes(),
+    ),
+    AccountSensorDescription(
+        key="api_response_time_average",
+        translation_key="api_response_time_average",
+        device_class=SensorDeviceClass.DURATION,
+        native_unit_of_measurement=UnitOfTime.MILLISECONDS,
+        suggested_display_precision=0,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.usage.latency.average_ms,
+        attrs_fn=lambda c: c.usage.latency.average_attributes(),
     ),
 )
 

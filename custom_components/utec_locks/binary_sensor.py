@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -32,6 +33,7 @@ class LockBinaryDescription(BinarySensorEntityDescription):
     """Per-lock binary sensor description."""
 
     value_fn: Callable[[UtecLockEntity], bool | None]
+    attrs_fn: Callable[[UtecLockEntity], dict[str, Any]] | None = None
 
 
 def _door(entity: UtecLockEntity) -> bool | None:
@@ -83,6 +85,7 @@ LOCK_DESCRIPTIONS: tuple[LockBinaryDescription, ...] = (
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=_cloud,
+        attrs_fn=lambda e: {"offline_reports": e.snapshot.offline_reports},
     ),
 )
 
@@ -149,6 +152,12 @@ class UtecLockBinarySensor(UtecLockEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Value from the description."""
         return self.entity_description.value_fn(self)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Optional attributes (cloud connection: pending offline reports)."""
+        fn = self.entity_description.attrs_fn
+        return fn(self) if fn else None
 
 
 class UtecPushHealthy(UtecAccountEntity, BinarySensorEntity):

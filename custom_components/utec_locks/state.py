@@ -3,6 +3,12 @@
 Each field keeps its own timestamp and source, so a battery-only push updates
 battery and never refreshes lock-state freshness. Only a report that actually
 carries ``lockState`` makes the lock state fresh.
+
+Offline is debounced (DESIGN.md 7.3): a lock is shown offline only after
+``OFFLINE_CONFIRM_REPORTS`` consecutive reports that say ``Offline``. A report
+held back as pending changes nothing but the counter; any report that says
+``Online`` (poll, push or confirmation) resets it. Fetch failures and reports
+without a health status neither count nor reset.
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .api.models import DoorState, LockMode, LockReport, LockStateValue, Source
+from .const import OFFLINE_CONFIRM_REPORTS
 
 FIELDS = ("lock_state", "lock_mode", "door", "battery_level", "online")
 # Fields whose changes count as push-health evidence.
@@ -35,6 +42,8 @@ class LockSnapshot:
     online_at: datetime | None = None
     last_error: str | None = None
     door_seen: bool = False
+    # Consecutive "Offline" reports (debounce counter; 0 after any "Online").
+    offline_reports: int = 0
 
 
 @dataclass(frozen=True)
@@ -52,6 +61,7 @@ class LockStateStore:
 
     _locks: dict[str, LockSnapshot] = field(default_factory=dict)
     last_reports: dict[str, LockReport] = field(default_factory=dict)
+    offline_confirm_reports: int = OFFLINE_CONFIRM_REPORTS
 
     def get(self, device_id: str) -> LockSnapshot:
         """Return the snapshot (empty when nothing is known)."""
@@ -72,8 +82,31 @@ class LockStateStore:
         if snap.last_error != code:
             self._locks[device_id] = replace(snap, last_error=code)
 
+    def hold_offline(self, report: LockReport) -> bool:
+        """Count an "Offline" report; True when it is held back as pending.
+
+        A held report is not applied: lock state, mode, door, battery and
+        connectivity keep their last known values and timestamps. Only the
+        counter and the raw report (for diagnostics) are recorded. Once the
+        lock is shown offline, further offline reports apply normally.
+        """
+        if report.online is not False:
+            return False
+        snap = self.get(report.device_id)
+        if snap.online is False:
+            return False
+        count = snap.offline_reports + 1
+        if count >= self.offline_confirm_reports:
+            return False
+        self._locks[report.device_id] = replace(snap, offline_reports=count)
+        self.last_reports[report.device_id] = report
+        return True
+
     def apply(self, report: LockReport) -> list[FieldChange]:
-        """Apply a report; return the fields whose values changed."""
+        """Apply a report; return the fields whose values changed.
+
+        Call :meth:`hold_offline` first; ``apply`` itself never holds a report.
+        """
         snap = self.get(report.device_id)
         changes: list[FieldChange] = []
         updates: dict[str, Any] = {"last_error": report.error_code}
@@ -103,7 +136,11 @@ class LockStateStore:
         if report.online is not None:
             if report.online != snap.online:
                 changes.append(FieldChange("online", snap.online, report.online))
-            updates.update(online=report.online, online_at=at)
+            updates.update(
+                online=report.online,
+                online_at=at,
+                offline_reports=0 if report.online else snap.offline_reports + 1,
+            )
         self._locks[report.device_id] = replace(snap, **updates)
         self.last_reports[report.device_id] = report
         return changes

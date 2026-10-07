@@ -2,12 +2,14 @@
 
 Every request to ``/action`` is counted at one choke point (the client's
 observer). Totals and the rolling 24 x hourly / 60 x per-minute buckets are
-persisted with HA's ``Store`` so they survive restarts.
+persisted with HA's ``Store`` so they survive restarts. Response times are
+tracked alongside in memory only (:mod:`.latency`).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 import logging
 import time
 from typing import Any
@@ -23,6 +25,7 @@ from .const import (
     USAGE_STORE_MINOR_VERSION,
     USAGE_STORE_VERSION,
 )
+from .latency import LatencyTracker
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,6 +69,9 @@ def _empty() -> dict[str, Any]:
         "hourly": {},
         "minutely": {},
         "hourly_command_overhead": {},
+        # Per lock: every "Offline" report ({"count": n, "last": iso}); local only,
+        # never in diagnostics (keyed by device id).
+        "offline_reports": {},
     }
 
 
@@ -84,6 +90,7 @@ class UsageMeter:
         self.data: dict[str, Any] = _empty()
         self._listeners: list[CALLBACK_TYPE] = []
         self._clock: Callable[[], float] = time.time
+        self.latency = LatencyTracker()
 
     async def async_load(self) -> None:
         """Load persisted totals; a corrupt file restarts counting from zero."""
@@ -126,10 +133,13 @@ class UsageMeter:
 
         return _remove
 
-    def _changed(self) -> None:
-        self._store.async_delay_save(lambda: self.data, USAGE_SAVE_DELAY)
+    def _notify(self) -> None:
         for listener in list(self._listeners):
             listener()
+
+    def _changed(self) -> None:
+        self._store.async_delay_save(lambda: self.data, USAGE_SAVE_DELAY)
+        self._notify()
 
     # ------------------------------------------------------------------
     # Recording
@@ -162,6 +172,7 @@ class UsageMeter:
     @callback
     def record_request(self, record: RequestRecord) -> None:
         """Observer for the API client: one call per request."""
+        self.latency.add(record)
         now = self._clock()
         self.data["requests_total"] += 1
         by_kind = self.data["requests_by_kind"]
@@ -181,6 +192,42 @@ class UsageMeter:
                 codes[record.code] = codes.get(record.code, 0) + 1
         self._prune()
         self._changed()
+
+    @callback
+    def record_offline_report(self, device_id: str) -> int:
+        """A report said the lock is offline (counted even while debounced)."""
+        reports: dict[str, Any] = self.data["offline_reports"]
+        entry = reports.get(device_id)
+        count = entry.get("count", 0) if isinstance(entry, dict) else 0
+        if not isinstance(count, int):
+            count = 0
+        reports[device_id] = {"count": count + 1, "last": dt_util.utcnow().isoformat()}
+        self._changed()
+        return count + 1
+
+    @callback
+    def forget_lock(self, device_id: str) -> None:
+        """Drop a removed lock's offline-report history."""
+        if self.data["offline_reports"].pop(device_id, None) is not None:
+            self._changed()
+
+    def offline_report_count(self, device_id: str) -> int:
+        """Offline reports seen for one lock (persisted)."""
+        entry = self.data["offline_reports"].get(device_id)
+        count = entry.get("count") if isinstance(entry, dict) else None
+        return count if isinstance(count, int) else 0
+
+    def last_offline_report(self, device_id: str) -> datetime | None:
+        """When the last offline report for one lock arrived (persisted)."""
+        entry = self.data["offline_reports"].get(device_id)
+        raw = entry.get("last") if isinstance(entry, dict) else None
+        return dt_util.parse_datetime(raw) if isinstance(raw, str) else None
+
+    @callback
+    def record_token_request(self, record: RequestRecord) -> None:
+        """A token refresh was timed (response-time sensors only, not counted)."""
+        self.latency.add(record)
+        self._notify()
 
     @callback
     def record_command_sent(self) -> None:
@@ -253,6 +300,7 @@ class UsageMeter:
     def snapshot(self) -> dict[str, Any]:
         """Diagnostics view."""
         data = dict(self.data)
+        data.pop("offline_reports", None)  # keyed by device id; shown per lock instead
         data["requests_last_24h"] = self.requests_last_24h
         data["requests_last_hour"] = self.requests_last_hour
         return data

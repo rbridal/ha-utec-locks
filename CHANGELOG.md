@@ -7,8 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-06
+
+Pre-release for hardware testing.
+
+### Added
+
+- Account diagnostic sensors **Last API response time** and **Average API
+  response time** (duration, ms). Every HTTP request to U-tec is timed: Query,
+  confirmation checks, commands, discovery, push registration and OAuth token
+  refreshes. The average is the mean of the last 20 requests that got an HTTP
+  response (error replies included). Timeouts and connection failures stay
+  visible in Last (attribute `outcome`) but are excluded from the average and
+  counted in `failed_requests`. Not persisted. Diagnostics include the 20-request
+  timing window.
+- Per-lock diagnostic sensors **Offline reports** (total_increasing) and **Last
+  offline report** (timestamp), persisted across restarts. Every report that
+  says the lock is offline counts, including single blips that are no longer
+  shown. INFO log lines for each offline report and for coming back online
+  (lock name only).
+- Cloud connection attribute `offline_reports`: consecutive offline reports.
+
 ### Changed
 
+- **Offline debounce:** a lock is shown offline (lock and mode `unknown`,
+  cloud connection off) only after two consecutive offline reports. After the
+  first, the last known state, mode and connectivity are kept. Any online report
+  (poll, confirmation or push) resets the count. API fetch failures neither count
+  nor reset. Prompted by a single-poll blip on the shop Latch on 2026-10-06 that
+  cascaded into alarm-template unknowns.
 - README and DESIGN: document Latch-5-NFC hardware verification for Normal,
   Passage, and Locked (mode 2); remove speculative "(to verify)" language.
 
@@ -72,6 +99,7 @@ First pre-release, for hardware testing. Requires Home Assistant 2026.3.0 or new
 - Initial repository scaffold for the `utec_locks` Home Assistant custom integration (0.1.0-dev).
 - Packaging stubs: `manifest.json`, `hacs.json`, MIT license, draft README, design document under `docs/`.
 
-[Unreleased]: https://github.com/rbridal/ha-utec-locks/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/rbridal/ha-utec-locks/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/rbridal/ha-utec-locks/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/rbridal/ha-utec-locks/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/rbridal/ha-utec-locks/releases/tag/v0.1.0

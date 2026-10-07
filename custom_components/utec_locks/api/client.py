@@ -78,6 +78,12 @@ REQUEST_KINDS = (
     KIND_PUSH_REGISTER,
     KIND_USER,
 )
+# Token refresh (OAuth token endpoint, not /action). Timed for the response-time
+# sensors only; it is not an /action request and is not in REQUEST_KINDS.
+KIND_TOKEN_REFRESH = "token_refresh"
+
+# Outcomes where no HTTP response arrived (the elapsed time is not a response time).
+NO_RESPONSE_OUTCOMES = frozenset({"timeout", "connection", "error"})
 
 
 class TokenProvider(Protocol):
@@ -100,7 +106,7 @@ class RequestRecord:
     started: datetime
     latency: float
     http_status: int | None
-    outcome: str  # ok, auth, http_429, http_5xx, envelope, timeout, connection
+    outcome: str  # ok, auth, http_429, http_5xx, envelope, timeout, connection, error
     code: str | None = None
     devices: int = 0
 
@@ -389,6 +395,8 @@ class UtecClient:
 
 
 __all__ = [
+    "KIND_TOKEN_REFRESH",
+    "NO_RESPONSE_OUTCOMES",
     "REQUEST_KINDS",
     "RequestRecord",
     "TokenProvider",

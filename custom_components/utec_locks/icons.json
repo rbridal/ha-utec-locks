@@ -23,6 +23,12 @@
       "last_report": {
         "default": "mdi:clock-check-outline"
       },
+      "offline_reports": {
+        "default": "mdi:cloud-off-outline"
+      },
+      "last_offline_report": {
+        "default": "mdi:cloud-clock-outline"
+      },
       "api_requests": {
         "default": "mdi:counter"
       },
@@ -55,6 +61,12 @@
       },
       "poll_interval": {
         "default": "mdi:timer-sync-outline"
+      },
+      "api_response_time_last": {
+        "default": "mdi:timer-outline"
+      },
+      "api_response_time_average": {
+        "default": "mdi:timer-sand"
       }
     },
     "event": {

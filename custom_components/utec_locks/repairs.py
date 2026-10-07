@@ -48,6 +48,7 @@ class LockRemovedRepairFlow(RepairsFlow):
                 coordinator.locks.pop(str(device_id), None)
                 coordinator.removed.discard(str(device_id))
                 coordinator.store.remove(str(device_id))
+                entry.runtime_data.usage.forget_lock(str(device_id))
             return self.async_create_entry(data={})
         return self.async_show_form(step_id="confirm", data_schema=vol.Schema({}))
 

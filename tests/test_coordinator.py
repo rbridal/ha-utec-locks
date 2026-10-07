@@ -254,10 +254,11 @@ async def test_auth_failure_starts_reauth(
 async def test_offline_shows_unknown_available(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, cloud: FakeUtecCloud, credentials
 ) -> None:
-    """Cloud offline: lock unknown, cloud sensor off, still available."""
+    """Cloud offline (confirmed): lock unknown, cloud sensor off, still available."""
     await setup(hass)
     cloud.set_state(LOCK2, "st.healthCheck", "status", "Offline")
-    await advance(hass, freezer, 62)
+    # Offline is debounced: it shows after two consecutive offline polls.
+    await advance(hass, freezer, 95)
     shop = hass.states.get(SHOP)
     assert shop.state == STATE_UNKNOWN
     assert shop.attributes["cloud_status"] == "offline"

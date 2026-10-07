@@ -154,9 +154,11 @@ async def test_commands_sent_while_offline(
 ) -> None:
     """Cloud offline (state unknown) does not suppress a command."""
     cloud.set_state(LOCK1, "st.healthCheck", "status", "Offline")
-    await advance(hass, freezer, 31)
-    await runtime(loaded).coordinator.async_refresh()
-    await hass.async_block_till_done()
+    # Two consecutive offline reports are needed before offline shows.
+    for _ in range(2):
+        await advance(hass, freezer, 31)
+        await runtime(loaded).coordinator.async_refresh()
+        await hass.async_block_till_done()
     assert hass.states.get(FRONT).state == STATE_UNKNOWN
     await call_lock(hass, "lock", FRONT)
     await call_lock(hass, "unlock", FRONT)

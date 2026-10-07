@@ -430,6 +430,15 @@ class UtecAccountCoordinator(DataUpdateCoordinator[dict[str, LockSnapshot]]):
         for incoming in reports:
             if incoming.device_id not in self.locks:
                 continue
+            name = self.locks[incoming.device_id].name
+            before = self.store.get(incoming.device_id)
+            if incoming.online is False:
+                self.usage.record_offline_report(incoming.device_id)
+            if self.store.hold_offline(incoming):
+                # One "Offline" report is not enough (DESIGN.md 7.3): keep the
+                # last known values; it neither confirms commands nor scores push.
+                self._log_offline(name, incoming.device_id, showing_unknown=False)
+                continue
             report = (
                 self.commands.filter_contradiction(incoming)
                 if self.commands is not None
@@ -437,6 +446,15 @@ class UtecAccountCoordinator(DataUpdateCoordinator[dict[str, LockSnapshot]]):
             )
             # A first value (old None) is not a change: nothing could have pushed it.
             changes = {c.field for c in self.store.apply(report) if c.old is not None}
+            if report.online is False:
+                self._log_offline(name, report.device_id, showing_unknown=True)
+            elif report.online is True and before.offline_reports:
+                _LOGGER.info(
+                    "%s: U-tec reported device online again after %d offline report(s)%s",
+                    name,
+                    before.offline_reports,
+                    "" if before.online is False else " (offline was never shown)",
+                )
             track_push = self.health.registration is Registration.REGISTERED
             for field in EVIDENCE_FIELDS:
                 if not track_push:
@@ -459,6 +477,15 @@ class UtecAccountCoordinator(DataUpdateCoordinator[dict[str, LockSnapshot]]):
         if notify:
             self.data = self.store.snapshot()
             self.async_update_listeners()
+
+    def _log_offline(self, name: str, device_id: str, *, showing_unknown: bool) -> None:
+        _LOGGER.info(
+            "%s: U-tec reported device offline (report %d of %d needed; showing unknown: %s)",
+            name,
+            self.store.get(device_id).offline_reports,
+            self.store.offline_confirm_reports,
+            "yes" if showing_unknown else "no",
+        )
 
     @callback
     def async_handle_push(self, message: PushMessage) -> str:

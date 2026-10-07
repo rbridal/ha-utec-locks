@@ -82,6 +82,9 @@ def _lock_diag(entry: UtecConfigEntry, device_id: str) -> dict[str, Any]:
             "battery_level": snap.battery_level,
             "battery_at": _iso(snap.battery_at),
             "online": snap.online,
+            "offline_reports_consecutive": snap.offline_reports,
+            "offline_reports_total": runtime.usage.offline_report_count(device_id),
+            "last_offline_report": _iso(runtime.usage.last_offline_report(device_id)),
             "last_error": snap.last_error,
         },
         "last_report": None
@@ -131,6 +134,7 @@ async def async_get_config_entry_diagnostics(
         "push": {**health, **runtime.push.diagnostics()},
         "exchanges": [record.as_dict() for record in runtime.client.exchanges],
         "usage": runtime.usage.snapshot(),
+        "api_response_time": runtime.usage.latency.snapshot(),
         "locks": [_lock_diag(entry, lid) for lid in runtime.coordinator.locks],
     }
 

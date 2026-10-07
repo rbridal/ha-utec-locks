@@ -175,10 +175,18 @@ ISSUE_RATE_LIMITED: Final = "rate_limited"
 ISSUE_COMMAND_LOOP: Final = "command_loop"
 ISSUE_LOCK_REMOVED: Final = "lock_removed"
 
+# Offline debounce: consecutive "Offline" reports for one lock before it is
+# shown offline (unknown state, cloud connection off). Online resets the count.
+OFFLINE_CONFIRM_REPORTS: Final = 2
+
 # Usage store
 USAGE_STORE_VERSION: Final = 1
 USAGE_STORE_MINOR_VERSION: Final = 1
 USAGE_SAVE_DELAY: Final = 60
+
+# API response-time sensors: rolling window of the most recent HTTP requests
+# (in memory only; resets on restart).
+LATENCY_WINDOW: Final = 20
 
 # Platforms forwarded at setup.
 PLATFORMS: Final[tuple[str, ...]] = (

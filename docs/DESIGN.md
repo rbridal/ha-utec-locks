@@ -388,7 +388,7 @@ Option "Slow down polling while push is healthy", default **off** in v1, with "I
 |---|---|---|---|
 | Fresh report `Locked` / `Unlocked` | True / False | | Normal |
 | Fresh report `Jammed` | None | `is_jammed=True` | HA shows `jammed` |
-| Fresh report `Unknown`, or health `Offline` | None | | Shows `unknown`; attribute `cloud_status: offline` |
+| Fresh report `Unknown`, or health `Offline` confirmed by 2 consecutive reports (7.3) | None | | Shows `unknown`; attribute `cloud_status: offline` |
 | Stale (no fresh `lockState` within `stale_after`) | None | | Shows `unknown`; `stale: true`, `last_known_state`, `last_reported` |
 | Command pending (Section 8) | as reported | `is_locking` or `is_unlocking` True | Transitional state until confirmed or timed out |
 
@@ -419,6 +419,27 @@ An entity is **unavailable** only when:
 Polling failures, auth failures, push failures, offline locks, and stale data all leave entities available, shown as `unknown` plus attributes and diagnostic sensors. While reauth is pending, commands fail with a translated "Re-authentication required" error instead of silently doing nothing.
 
 This departs from the literal Silver `entity-unavailable` rule. The deviation and its reason are recorded in `quality_scale.yaml` (Section 13).
+
+## 7.3 Offline debounce and offline-report tracking (0.1.2)
+
+**[Field] Shop HA, October 6, 2026, 21:55:48 MDT:** one poll reported the Latch-5-NFC offline; the next poll 32 s later showed it online again. That single report turned the lock and the mode select `unknown` and the cloud connection off, which cascaded into template and alarm unknowns and an "Alarm State Misaligned" notification.
+
+**Decided (Rob, October 6, 2026):** a lock is shown offline only after **two consecutive offline reports** for that device (`OFFLINE_CONFIRM_REPORTS = 2` in `const.py`).
+
+- A report "says offline" when `st.healthCheck.status` is `Offline`, whatever its source: background poll, confirmation query, contradiction check or push.
+- On the first offline report the report is **held**: lock state, mode, door, battery, connectivity and their timestamps keep their last known values. The held report does not confirm a pending command, does not count as push evidence, and does not trigger the contradiction check. It is kept as the device's last raw report for diagnostics. An INFO log line says the offline is pending.
+- The second consecutive offline report is applied as before: lock and mode `unknown`, cloud connection off. Further offline reports apply directly.
+- Any report that says `Online` (poll, confirmation or push) resets the counter.
+- **Coordinator fetch failures** (timeout, connection error, 5xx, 429, auth) are not reports: they neither count nor reset. Offline, fetch failure, offline therefore still trips on the second offline report. Reports without a health status and per-device error codes (such as `DEVICE_OFFLINE` on a command) also neither count nor reset.
+- The consecutive counter is in memory (`LockSnapshot.offline_reports`) and shown as the `offline_reports` attribute of the cloud connection sensor.
+- The debounce applies the same way at startup: if the first poll after a restart says offline, the lock shows `unknown` (no data yet) and the cloud connection stays `unknown` until the second report.
+
+Because single blips are now hidden, every offline report is still **recorded**, per lock:
+
+- **Offline reports** sensor (`total_increasing`, diagnostic): every report that said offline, including the first, held one. Persisted in the usage store (Section 10) under `offline_reports`, keyed by device id.
+- **Last offline report** sensor (timestamp, diagnostic): when the last one arrived. Persisted with the count.
+- INFO log for each offline report: `<lock name>: U-tec reported device offline (report N of 2 needed; showing unknown: yes/no)`, where N is the consecutive count, and `<lock name>: U-tec reported device online again after N offline report(s)` when it recovers. Only the lock name appears; no ids, tokens or URLs.
+- Fetch failures are not offline reports. The history is dropped when the lock's device is removed.
 
 ---
 
@@ -513,8 +534,10 @@ None. Commands are accepted without being executed often enough to matter (A22),
 | Battery level | `sensor` (enum) | `_battery_level` | diagnostic | on | `critically_low`, `low`, `medium`, `high`, `full` (the API's 1..5). |
 | Battery (percent) | `sensor` (battery, %) | `_battery_pct` | diagnostic | **off** | Documented mapping level x 20, for cards that need a percentage. Off by default because the API has no real percentage. |
 | Status stale | `binary_sensor` (problem) | `_stale` | diagnostic | on | On when lock state is older than `stale_after`. For alerts and automations. |
-| Cloud connection | `binary_sensor` (connectivity) | `_cloud` | diagnostic | on | From `st.healthCheck`. |
+| Cloud connection | `binary_sensor` (connectivity) | `_cloud` | diagnostic | on | From `st.healthCheck`, debounced (7.3). Attribute `offline_reports`: consecutive offline reports (0 after any online report). |
 | Last report | `sensor` (timestamp) | `_last_report` | diagnostic | off | Time of the last report carrying lockState. |
+| Offline reports | `sensor`, total_increasing | `_offline_reports` | diagnostic | on | Every report that said offline, including unconfirmed single blips (7.3). Persisted. |
+| Last offline report | `sensor` (timestamp) | `_last_offline_report` | diagnostic | on | When the last offline report arrived. Persisted. |
 | Command result | `event` | `_command_result` | | on | Event types `confirmed`, `not_confirmed`, `rejected`, with command, expected value, seconds and query count. |
 
 **Decided (Rob, October 6, 2026):** battery entities are low binary sensor **on**, 5-step enum **on**, percent sensor **off** by default.
@@ -537,6 +560,8 @@ Mode 2 ("Locked") is offered because the API documents it, and labeled "Locked (
 | Push healthy | `binary_sensor` (connectivity) | on | no | On only in `healthy`; unknown while `unverified`. |
 | Last push | `sensor`, timestamp | on | yes | Any authenticated push. |
 | Poll interval in use | `sensor` (duration, s) | off | no | Base, relaxed, or backoff value. |
+| Last API response time | `sensor` (duration, ms), measurement, diagnostic | on | no | Duration of the most recent HTTP request: every `/action` call and every OAuth token refresh. Kept for failures too (a timeout shows its elapsed time). Attributes: `request_type`, `operation`, `outcome`, `http_status`, `measured_at`. |
+| Average API response time | `sensor` (duration, ms), measurement, diagnostic | on | no | Mean over the last 20 requests that got an HTTP response. Attributes: `window_requests`, `sample_count`, `failed_requests`, `max_ms`, `min_ms`, `last_measured_at`. See 10.1. |
 | Re-register push | `button` | off | | 5-minute cooldown. |
 
 Per-kind counts are attributes rather than separate sensors to keep the entity list short while every number stays visible and usable in templates. Separate sensors can be added later if users ask.
@@ -551,7 +576,16 @@ Per-kind counts are attributes rather than separate sensors to keep the entity l
 - Rolling windows persist as 24 hourly and 60 per-minute buckets, so "last 24 h" survives a restart.
 - `counting_since` is stored and shown. Totals are deleted in `async_remove_entry`.
 - Token refreshes (OAuth endpoint, not `/action`) are counted separately for diagnostics.
-- Diagnostics include the full usage snapshot.
+- Diagnostics include the full usage snapshot, except the per-lock offline-report history (keyed by device id), which appears per lock under the hashed lock id instead.
+- Per-lock offline-report counts and last times (7.3) live in the same store.
+
+## 10.1 API response times (0.1.2)
+
+- `LatencyTracker` (`latency.py`) keeps the last 20 timed requests in memory. It is fed at the same choke point as usage (the client's observer: every `/action` request, retries included, each Query batch separately) and by the OAuth token provider for token refreshes that actually hit the token endpoint (`request_type: token_refresh`, operation `OAuth/token`). Token refreshes are timed but are not `/action` requests, so they do not change the request counters.
+- **Last** = duration of the newest request, whatever its outcome.
+- **Average** = arithmetic mean of the requests in the 20-request window that got an HTTP response (any status: OK, error envelopes, 4xx, 429, 5xx). Requests with no response (timeout, connection error) stay in the window but are excluded from the average and max and counted as `failed_requests`; a 15 s timeout would otherwise swamp the number. A window with no responses has no average (`unknown`). A count window was chosen over a time window so the average never empties while polling is slow.
+- Not persisted: timings describe the cloud now. After a restart the sensors fill from the first requests of setup.
+- Diagnostics include the window (`api_response_time`): request type, operation, outcome, HTTP status, duration and time. No bodies, tokens, ids or names.
 
 ---
 
@@ -588,7 +622,7 @@ Options apply live through an update listener that reacts only to `entry.options
 
 ## 11.4 Diagnostics (config entry and device)
 
-Included: integration and HA versions; options; coordinator timing (interval in use, last success and failure, backoff level); push status and the last 20 evidence events; the last 20 API exchanges in summary (kind, HTTP status, envelope code, latency; no bodies); the usage snapshot; discovery records; and the last raw state report per lock.
+Included: integration and HA versions; options; coordinator timing (interval in use, last success and failure, backoff level); push status and the last 20 evidence events; the last 20 API exchanges in summary (kind, HTTP status, envelope code, latency; no bodies); the API response-time window (10.1); the usage snapshot; discovery records; and per lock the last raw state report and the offline-report counters (consecutive, total, last time; 7.3).
 
 Redacted with `async_redact_data`: `access_token`, `refresh_token`, `client_id`, `client_secret`, `push_secret`, `push_secret_previous`, `webhook_id`, webhook and cloudhook URLs, user id, first and last name, serial numbers, `customData`. Device ids are replaced with a stable short hash (for example `lock_3f9a`) so a user can still point at "this lock" in a bug report without publishing a MAC address.
 
@@ -855,7 +889,7 @@ All items below are **decided**. There are no remaining open Section 19 calls.
 6. **Confirmation schedule and budget.** Schedule **1/1/1/1/2/3/5/8/13/21 seconds** (10 checks; absolute times 1, 2, 3, 4, 6, 9, 14, 22, 35, 56 s), batched. **No hourly confirmation budget or cap.**
 7. **HTTPS-only push.** Firm floor. Home Assistant Cloud / Nabu Casa cloudhook qualifies (it is HTTPS). Plain HTTP local webhooks do not. Rationale: the push secret travels in a header.
 8. **Passage plus lock command (and always-send).** Always send lock, unlock, and mode commands regardless of Passage, cache, stale, or offline; no pre-check.
-9. **Cloud "offline".** Show `unknown` (not last known state).
+9. **Cloud "offline".** Show `unknown` (not last known state), once confirmed by two consecutive offline reports (item 19, 7.3).
 10. **Battery.** Low binary sensor **on** + 5-step enum **on**; percent sensor **off** by default.
 11. **API client.** In-repo API client for v1 (not a separate PyPI package on day one).
 12. **License.** MIT.
@@ -866,6 +900,7 @@ All items below are **decided**. There are no remaining open Section 19 calls.
 16. **Discovery cadence.** Every 6 hours.
 17. **Conflict with `u_tec`.** If the old `u_tec` integration is also loaded: **BLOCK setup** (not just warn).
 18. **Lock user / PIN management.** Out of scope for v1.
+19. **Offline debounce (0.1.2).** Show a lock offline only after two consecutive offline reports; fetch failures neither count nor reset; any online report resets. Record every offline report per lock (persisted count and last time, INFO log). See 7.3.
 
 ---
 

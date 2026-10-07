@@ -108,6 +108,12 @@
       "last_report": {
         "name": "Last report"
       },
+      "offline_reports": {
+        "name": "Offline reports"
+      },
+      "last_offline_report": {
+        "name": "Last offline report"
+      },
       "api_requests": {
         "name": "API requests"
       },
@@ -149,6 +155,12 @@
       },
       "poll_interval": {
         "name": "Poll interval in use"
+      },
+      "api_response_time_last": {
+        "name": "Last API response time"
+      },
+      "api_response_time_average": {
+        "name": "Average API response time"
       }
     },
     "event": {

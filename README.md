@@ -2,7 +2,7 @@
 
 A community integration for U-tec / Ultraloq smart locks, using U-tec's OpenAPI and your own API credentials.
 
-> **Status: 0.1.1 pre-release, for hardware testing.** Expect rough edges and report them in [issues](https://github.com/rbridal/ha-utec-locks/issues).
+> **Status: 0.1.2 pre-release, for hardware testing.** Expect rough edges and report them in [issues](https://github.com/rbridal/ha-utec-locks/issues).
 
 **Not made, endorsed, or supported by U-tec or Xthings.** Please report problems with this integration [here](https://github.com/rbridal/ha-utec-locks/issues), not to U-tec support.
 
@@ -38,11 +38,13 @@ For each lock:
 | Battery level | Critically low, low, medium, high, or full. U-tec reports five steps, not a percentage. |
 | Battery (percent) | Off by default. The five steps shown as 20 to 100% for cards that need a number. |
 | Status stale | On when Home Assistant hasn't heard from the lock for too long. |
-| Cloud connection | Whether U-tec says the lock is online. |
+| Cloud connection | Whether U-tec says the lock is online. Turns off only after two offline reports in a row (see [Offline blips](#offline-blips)). |
 | Last report | When the lock's state last came in. Off by default. |
+| Offline reports | How many times U-tec has reported the lock offline, including single blips that were never shown. Survives restarts. |
+| Last offline report | When U-tec last reported the lock offline. Survives restarts. |
 | Command result | An event for each lock command: confirmed, not confirmed, or rejected. |
 
-For your U-tec account: API requests (total, last 24 hours, last hour), projected requests per day, API errors, commands, confirmation checks, pushes received, push status, push healthy, last push, poll interval in use, and a button to re-register push. Totals survive restarts.
+For your U-tec account: API requests (total, last 24 hours, last hour), projected requests per day, API errors, commands, confirmation checks, pushes received, push status, push healthy, last push, poll interval in use, last and average API response time, and a button to re-register push. Totals survive restarts.
 
 ## Before you install
 
@@ -90,6 +92,17 @@ You can add more than one U-tec account. Each account is its own entry.
 - **Push.** If push is set up and working, U-tec tells Home Assistant about changes as they happen. The integration keeps an eye on whether push is actually delivering changes (see [Push notifications](#push-notifications)), and it never stops polling, because push can stop without warning.
 - **After your commands.** When you lock, unlock, or change mode from Home Assistant, it checks that lock up to 10 times over about 56 seconds (intervals 1/1/1/1/2/3/5/8/13/21 s, starting 1 second after U-tec accepts the command) until the change shows up. U-tec's reply often says the result will take up to 20 seconds; the integration checks from the first second anyway, so a fast lock is confirmed quickly. If nothing confirms the change, it gives up after about 90 seconds (see below).
 - **When it doesn't know.** If Home Assistant hasn't had a good report from a lock for 2 minutes (at the default interval), the lock shows **unknown** and **Status stale** turns on. The lock's attributes still show the last known state and when it was reported. The lock stays usable, so you can still lock and unlock it.
+
+### Offline blips
+
+U-tec's cloud sometimes reports a lock offline for a single poll and online again on the next. So one report isn't enough: a lock is shown offline (lock and lock mode **unknown**, **Cloud connection** off) only after **two offline reports in a row** for that lock. That's about 30 seconds later at the default interval.
+
+- After the first offline report, the lock keeps its last known state, mode and connection. The **Cloud connection** sensor's `offline_reports` attribute shows `1`.
+- Any report that says the lock is online (a poll, a check after your command, or a push) resets the count.
+- If Home Assistant can't reach U-tec at all, that isn't an offline report: it neither counts nor resets. Offline, then a failed poll, then offline again still shows offline.
+- Each lock is counted on its own.
+
+Blips are still recorded. **Offline reports** counts every offline report for the lock, including single ones that were never shown, and **Last offline report** says when the last one came. Both survive restarts. Each offline report is also logged at INFO level, for example `Shop Door: U-tec reported device offline (report 1 of 2 needed; showing unknown: no)`, followed by `Shop Door: U-tec reported device online again after 1 offline report(s)` when it recovers.
 
 ## Lock and unlock: what to expect
 
@@ -250,7 +263,9 @@ automation:
 |---|---|
 | No locks found during setup | In the Xthings app, OpenAPI page, make sure the locks are selected. |
 | Lock shows unknown and Status stale is on | U-tec isn't answering, or isn't reporting this lock. Look at **API errors** on the account device. U-tec returns occasional server errors; the integration backs off and keeps trying. |
-| Lock shows unknown and Cloud connection is off | U-tec says the lock is offline. Check its Wi-Fi or bridge. Commands are still sent, but U-tec will likely refuse them. |
+| Lock shows unknown and Cloud connection is off | U-tec has said the lock is offline twice in a row. Check its Wi-Fi or bridge. Commands are still sent, but U-tec will likely refuse them. |
+| Offline reports keeps going up but the lock never shows offline | U-tec is reporting single offline blips. Usually harmless; check the lock's Wi-Fi signal if it happens often. |
+| Everything feels slow | Look at **Last API response time** and **Average API response time** on the account device. |
 | State lags behind changes made at the door | Expected when push isn't working. Check **Push status**. See [Is this integration for you?](#is-this-integration-for-you) |
 | Push status stays Unverified | Lock or unlock once from Home Assistant; that creates evidence. |
 | Push status No URL | Set up Nabu Casa, or an HTTPS external URL under Settings → System → Network. |
@@ -276,6 +291,15 @@ Any U-tec / Ultraloq lock that appears in the U-tec OpenAPI with category `Smart
 ## Diagnostics and privacy
 
 **Settings → Devices & services → U-tec Locks → three dots → Download diagnostics.** Tokens, secrets, your client ID, push URLs, your name and user id, and serial numbers are removed. Lock ids are replaced with short codes.
+
+Diagnostic sensors on the account device:
+
+| Sensor | What it shows |
+|---|---|
+| Last API response time | How long the most recent request to U-tec took, in ms. Every request is timed: state checks, commands, discovery, push registration and token refreshes. A request that timed out or couldn't connect still shows how long it waited; the `outcome` attribute says what happened (`ok`, `timeout`, `connection`, `http_5xx`, ...). Other attributes: `request_type`, `operation` (for example `Uhome.Device/Query`), `http_status`, `measured_at`. |
+| Average API response time | The average over the **last 20 requests** that got an answer from U-tec, in ms. Answers with an error code count (U-tec still responded). Timeouts and connection failures don't, because one 15-second timeout would swamp the average; they're counted in the `failed_requests` attribute instead. Other attributes: `sample_count` (requests averaged), `window_requests` (20), `max_ms`, `min_ms`, `last_measured_at`. Unknown if none of the last 20 got an answer. |
+
+Response times aren't saved: after a restart they start again from the first requests. The diagnostics download includes the last 20 timings (request type, outcome, duration; no tokens, ids or names) and, per lock, the offline-report counts.
 
 The integration talks only to U-tec. It sends no data anywhere else.
 

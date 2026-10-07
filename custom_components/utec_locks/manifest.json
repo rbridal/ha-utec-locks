@@ -20,5 +20,5 @@
     "custom_components.utec_locks"
   ],
   "requirements": [],
-  "version": "0.1.1"
+  "version": "0.1.2"
 }
