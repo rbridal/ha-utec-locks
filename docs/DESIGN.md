@@ -294,7 +294,7 @@ New locks appear without a restart (Gold `dynamic-devices`). A lock missing from
 
 Backoff only slows background polling. It never delays or blocks a user command (Section 8). Stale clears as soon as a poll succeeds (entities leave `unknown` on the next freshness check).
 
-**Changed 2026-10-28 (Rob):** Cap lowered from 900 s to 60 s after a Shop HA outage where five transport failures opened the circuit and left lock state (and the shop alarm template) unknown for ~15 minutes until a manual reload. Fair-use cost during an outage stays about the same as normal 30 s polling. The HTTP session is owned per entry (`async_create_clientsession`) so transport recovery can recreate it without touching HA's shared session.
+**Decided (Rob, 2026-10-28 11:30 PM MDT):** outage backoff cap is **60 s** (his words: "60s works for me"). Cap lowered from the previous 900 s circuit-open. Prompted by a Shop HA outage earlier that evening where five transport failures opened the circuit and left lock state (and the shop alarm template) unknown for ~15 minutes until a manual reload. Fair-use cost during an outage stays about the same as normal 30 s polling. The HTTP session is owned per entry (`async_create_clientsession`) so transport recovery can recreate it without touching HA's shared session.
 
 ## 5.7 Startup jitter
 
