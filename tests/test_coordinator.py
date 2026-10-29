@@ -16,10 +16,12 @@ from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.utec_locks.const import (
+    BACKOFF_MAX_SECONDS,
     CONF_POLL_INTERVAL,
     CONF_PUSH_HEALTHY_POLL_INTERVAL,
     CONF_SLOW_POLL_WHEN_PUSH_HEALTHY,
     DOMAIN,
+    ISSUE_CLOUD_UNREACHABLE,
     ISSUE_LOCK_REMOVED,
     ISSUE_RATE_LIMITED,
 )
@@ -68,22 +70,31 @@ def test_clamp_poll_interval(caplog) -> None:
 
 
 def test_backoff_delay() -> None:
-    """min(base x 2^n, 900) +/-20 %, never below base; 900 s cap at the circuit."""
+    """min(base x 2^n, 60) +/-20 %, never below base; stays at 60 s after circuit."""
     rng = random.Random(1)
-    for failures, nominal in [(1, 30), (2, 60), (3, 120), (4, 240), (5, 900), (9, 900)]:
+    assert BACKOFF_MAX_SECONDS == 60.0
+    for failures, nominal in [(1, 30), (2, 60), (3, 60), (4, 60), (5, 60), (9, 60)]:
         for _ in range(50):
             delay = backoff_delay(30, failures, rng)
             assert delay >= 30
-            assert nominal * 0.8 - 1e-9 <= delay or delay == 30
-            assert delay <= nominal * 1.2 + 1e-9
+            assert delay <= BACKOFF_MAX_SECONDS * 1.2 + 1e-9
+            # Circuit / cap returns the bare max (no jitter) from failure 5 on.
+            if failures >= 5:
+                assert delay == BACKOFF_MAX_SECONDS
+            else:
+                assert nominal * 0.8 - 1e-9 <= delay or delay == 30
+                assert delay <= nominal * 1.2 + 1e-9
     assert backoff_delay(3600, 1, rng) >= 3600
 
 
 def test_rate_limit_delay() -> None:
-    """Retry-After honored (never below base), else aggressive backoff."""
+    """Retry-After honored (never below base), else aggressive backoff (capped)."""
     assert rate_limit_delay(30, 300, 1) == 300
     assert rate_limit_delay(30, 5, 1) == 30
-    assert rate_limit_delay(30, None, 1) >= 30 * 4 * 0.8
+    # Without Retry-After, start at n=2 but still respect the 60 s cap.
+    delay = rate_limit_delay(30, None, 1)
+    assert delay >= 30
+    assert delay <= BACKOFF_MAX_SECONDS * 1.2 + 1e-9
 
 
 # ---------------------------------------------------------------------------
@@ -177,14 +188,16 @@ async def test_no_locks_no_query(
 async def test_backoff_stale_unknown_and_recovery(
     hass: HomeAssistant, freezer: FrozenDateTimeFactory, cloud: FakeUtecCloud, credentials
 ) -> None:
-    """Failures back off to 900 s; entities stay available; stale shows unknown."""
+    """Failures back off to 60 s max; entities stay available; stale shows unknown."""
     _, coordinator = await setup(hass)
     cloud.script("Query", status=503, times=1000)
-    await advance(hass, freezer, 3 * 3600, step=5)
+    await advance(hass, freezer, 20 * 60, step=5)
     g = gaps(cloud)
-    assert g[-1] >= 900 * 0.8 - 6  # circuit open
+    assert g[-1] <= BACKOFF_MAX_SECONDS * 1.2 + 6
     assert all(x >= 29 for x in g)
-    assert coordinator._failures >= 5
+    # After the first few failures every gap stays near the 60 s cap, not 900 s.
+    assert all(x <= BACKOFF_MAX_SECONDS * 1.2 + 6 for x in g[3:])
+    assert coordinator.consecutive_failures >= 5
     front = hass.states.get(FRONT)
     assert front.state == STATE_UNKNOWN  # not unavailable
     assert front.attributes["stale"] is True
@@ -192,12 +205,54 @@ async def test_backoff_stale_unknown_and_recovery(
     assert hass.states.get("binary_sensor.front_door_status_stale").state == STATE_ON
     assert hass.states.get("select.front_door_lock_mode").state == STATE_UNKNOWN
     assert hass.states.get("binary_sensor.shop_door_door").state == STATE_UNKNOWN
-    # Recovery
+    # Recovery within one bounded retry window after the cloud returns.
     cloud.scripts.clear()
-    await advance(hass, freezer, 1000, step=5)
+    await advance(hass, freezer, 90, step=5)
     assert hass.states.get(FRONT).state == LockState.LOCKED
     assert hass.states.get("binary_sensor.front_door_status_stale").state == STATE_OFF
-    assert coordinator._failures == 0
+    assert coordinator.consecutive_failures == 0
+
+
+async def test_transport_outage_keeps_retrying_and_recovers(
+    hass: HomeAssistant, freezer: FrozenDateTimeFactory, cloud: FakeUtecCloud, credentials
+) -> None:
+    """Tonight's pattern: sustained transport errors must not wedge at 900 s.
+
+    Reproduces the 2026-10-28 Shop HA incident: several UtecTransportError
+    failures in a row, state goes unknown after stale_after, then the cloud
+    returns. With the old 900 s circuit-open the next poll would not have
+    happened before a manual reload; with the 60 s cap it recovers on its own.
+    """
+    entry, coordinator = await setup(hass)
+    assert coordinator.last_success is not None
+    # Sustained timeouts (the field failure class that night).
+    cloud.script("Query", exc=TimeoutError(), times=1000)
+    await advance(hass, freezer, 6 * 60, step=5)
+    g = gaps(cloud)
+    assert len(g) >= 5
+    assert all(29 <= x <= BACKOFF_MAX_SECONDS * 1.2 + 6 for x in g)
+    assert coordinator.consecutive_failures >= 5
+    assert hass.states.get(FRONT).state == STATE_UNKNOWN
+    issue_id = f"{ISSUE_CLOUD_UNREACHABLE}_{entry.entry_id}"
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is not None
+    fail_sensor = hass.states.get("sensor.u_tec_account_consecutive_poll_failures")
+    if fail_sensor is None:
+        registry = er.async_get(hass)
+        matches = [
+            e.entity_id
+            for e in registry.entities.values()
+            if e.unique_id and str(e.unique_id).endswith("consecutive_failures")
+        ]
+        assert matches, "consecutive_failures sensor missing"
+        fail_sensor = hass.states.get(matches[0])
+    assert fail_sensor is not None
+    assert int(fail_sensor.state) >= 5
+    # Cloud recovers: next poll within the bounded window clears stale + repair.
+    cloud.scripts.clear()
+    await advance(hass, freezer, 90, step=5)
+    assert hass.states.get(FRONT).state == LockState.LOCKED
+    assert coordinator.consecutive_failures == 0
+    assert ir.async_get(hass).async_get_issue(DOMAIN, issue_id) is None
 
 
 async def test_stale_threshold(

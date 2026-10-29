@@ -122,9 +122,12 @@ FLOOR_GUARD_SECONDS: Final = 29.5
 # ~1 s early. Padding the scheduler by 1 s keeps every scheduled poll at least
 # 30 s after the previous one (the floor is a floor, not a target).
 SCHEDULER_PAD_SECONDS: Final = 1.0
-BACKOFF_MAX_SECONDS: Final = 900.0
+BACKOFF_MAX_SECONDS: Final = 60.0
 BACKOFF_JITTER: Final = 0.2
 CIRCUIT_OPEN_AFTER_FAILURES: Final = 5
+# After this many consecutive poll failures (or this long since last success),
+# raise a repair so the outage is visible without waiting for a reload.
+CLOUD_UNREACHABLE_AFTER: Final = timedelta(minutes=5)
 RATE_LIMIT_MAX_SECONDS: Final = 3600.0
 STALE_CHECK_INTERVAL: Final = timedelta(seconds=15)
 DISCOVERY_DEBOUNCE: Final = timedelta(minutes=10)
@@ -174,6 +177,7 @@ ISSUE_PUSH_NO_HTTPS: Final = "push_no_https_url"
 ISSUE_RATE_LIMITED: Final = "rate_limited"
 ISSUE_COMMAND_LOOP: Final = "command_loop"
 ISSUE_LOCK_REMOVED: Final = "lock_removed"
+ISSUE_CLOUD_UNREACHABLE: Final = "cloud_unreachable"
 
 # Offline debounce: consecutive "Offline" reports for one lock before it is
 # shown offline (unknown state, cloud connection off). Online resets the count.

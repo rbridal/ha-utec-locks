@@ -156,6 +156,9 @@
       "poll_interval": {
         "name": "Poll interval in use"
       },
+      "consecutive_failures": {
+        "name": "Consecutive poll failures"
+      },
       "api_response_time_last": {
         "name": "Last API response time"
       },
@@ -199,6 +202,10 @@
     "rate_limited": {
       "title": "U-tec is rate limiting requests",
       "description": "U-tec answered with \"too many requests\" three or more times in the last hour. The integration is backing off. Check the API request sensors on the U-tec account device, and consider a longer polling interval. This repair clears after 24 hours without rate limiting."
+    },
+    "cloud_unreachable": {
+      "title": "U-tec cloud has been unreachable",
+      "description": "Home Assistant has not received a successful U-tec API poll for a while ({failures} consecutive failures; last success: {last_success}). Lock state may show as unknown until the cloud answers again. The integration keeps retrying about every 30–60 seconds and will clear this repair on the next successful poll. No action is required unless this lasts for hours — then check your internet connection and U-tec service status."
     },
     "command_loop": {
       "title": "Many commands sent to {name}",

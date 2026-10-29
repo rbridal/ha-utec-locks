@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-28
+
+Pre-release. Recovery after the 2026-10-28 Shop HA transport outage.
+
+### Added
+
+- Account diagnostic sensor **Consecutive poll failures** (with last success /
+  failure / next poll due attributes).
+- Repair issue **U-tec cloud has been unreachable** after about five minutes
+  without a successful poll. Clears on the next success.
+
+### Changed
+
+- **Bounded backoff:** failure backoff caps at 60 s (was 900 s circuit-open).
+  During an outage the integration keeps retrying near Rob's 30 s polling
+  floor so lock state recovers as soon as the cloud answers again, without a
+  reload. Fair-use cost during an outage stays about the same as normal
+  polling.
+- **Transport recovery:** on timeout / connection errors, recreate the owned
+  HTTP session and force one token refresh once per failure streak.
+- The API client uses an entry-owned `aiohttp` session (`async_create_clientsession`)
+  so recovery can replace it without touching Home Assistant's shared session.
+- DESIGN.md §5.6 updated for the 2026-10-28 decision.
+
 ## [0.1.2] - 2026-10-06
 
 Pre-release for hardware testing.

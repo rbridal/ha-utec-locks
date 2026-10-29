@@ -169,7 +169,7 @@ async def test_commands_sent_while_offline(
 async def test_commands_sent_while_stale_and_in_backoff(
     hass: HomeAssistant, freezer, cloud: FakeUtecCloud, credentials
 ) -> None:
-    """Stale (unknown) state and an open circuit never suppress a command."""
+    """Stale (unknown) state and capped backoff never suppress a command."""
     from .conftest import make_entry
 
     entry = make_entry()
@@ -177,9 +177,10 @@ async def test_commands_sent_while_stale_and_in_backoff(
     await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     coordinator = runtime(entry).coordinator
-    cloud.script("Query", status=503, times=100)
-    await advance(hass, freezer, 3600 * 3, step=30)
-    assert coordinator._failures >= 5  # circuit open
+    # Enough 503s that a 60 s-capped backoff cannot drain the script queue.
+    cloud.script("Query", status=503, times=1000)
+    await advance(hass, freezer, 10 * 60, step=5)
+    assert coordinator.consecutive_failures >= 5
     assert hass.states.get(FRONT).state == STATE_UNKNOWN
     assert hass.states.get(FRONT).attributes["stale"] is True
     cloud.calls.clear()

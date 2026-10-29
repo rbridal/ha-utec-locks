@@ -284,14 +284,17 @@ New locks appear without a restart (Gold `dynamic-devices`). A lock missing from
 
 | Situation | Behavior |
 |---|---|
-| HTTP 5xx, timeout (15 s), connection error | Count the failure. Next attempt after `min(base x 2^n, 900 s)` with +/-20% jitter, never below `base`. `n` resets on success. |
+| HTTP 5xx, timeout (15 s), connection error | Count the failure. Next attempt after `min(base x 2^n, 60 s)` with +/-20% jitter, never below `base`. `n` resets on success. On a transport error (timeout / connection), recreate the owned HTTP session and force one token refresh once per failure streak, then keep polling. |
 | HTTP 429 | Honor `Retry-After` (seconds or HTTP date), clamped to [base, 3,600 s]. Without the header, back off as for 5xx starting at n=2. Three 429s within an hour raise the `rate_limited` repair. |
 | HTTP 200 + `INVALID_TOKEN` | Force one token refresh and retry once. If it repeats, raise `ConfigEntryAuthFailed`, which starts reauth. |
 | HTTP 200 + other top-level envelope error | Treated like 5xx (backoff). The code is logged (no body) and counted per code. |
 | HTTP 401 / 403 | Same as `INVALID_TOKEN`. |
-| Five consecutive failures | "Circuit open": one attempt every 900 s until one succeeds. HA's coordinator logs once when updates start failing and once when they recover (Silver `log-when-unavailable`). |
+| Five consecutive failures | Stay at the 60 s cap (still near the 30 s floor) until one succeeds. HA's coordinator logs once when updates start failing and once when they recover (Silver `log-when-unavailable`). |
+| Cloud unreachable for ~5 minutes | Raise the `cloud_unreachable` repair (warning). Clears on the next successful poll. Account diagnostic sensor `consecutive_failures` shows the streak. |
 
-Backoff only slows background polling. It never delays or blocks a user command (Section 8).
+Backoff only slows background polling. It never delays or blocks a user command (Section 8). Stale clears as soon as a poll succeeds (entities leave `unknown` on the next freshness check).
+
+**Decided (Rob, 2026-10-28 11:30 PM MDT):** outage backoff cap is **60 s** (his words: "60s works for me"). Cap lowered from the previous 900 s circuit-open. Prompted by a Shop HA outage earlier that evening where five transport failures opened the circuit and left lock state (and the shop alarm template) unknown for ~15 minutes until a manual reload. Fair-use cost during an outage stays about the same as normal 30 s polling. The HTTP session is owned per entry (`async_create_clientsession`) so transport recovery can recreate it without touching HA's shared session.
 
 ## 5.7 Startup jitter
 
@@ -722,7 +725,7 @@ Target: **Silver complete, Gold mostly done**, Platinum in part. A `quality_scal
 
 ## 14.2 Must-have test cases (abridged)
 
-**Floor and scheduling:** values below 30 clamped at load; options form rejects below 30; a manual refresh within 30 s makes no request; scheduled polls never closer than 29.5 s; startup jitter within [0, base]; backoff growth, cap, jitter bounds, and reset; 429 with and without Retry-After; circuit open and close; discovery cadence and debounce.
+**Floor and scheduling:** values below 30 clamped at load; options form rejects below 30; a manual refresh within 30 s makes no request; scheduled polls never closer than 29.5 s; startup jitter within [0, base]; backoff growth, 60 s cap, jitter bounds, and reset; transport recovery (session recreate + token refresh); 429 with and without Retry-After; cloud_unreachable repair; discovery cadence and debounce.
 
 **Security-command rule:** lock sent when cached locked; unlock sent when cached unlocked; lock sent in cached Passage, with the warning; setMode sent when the cached mode equals the target; commands sent while stale, offline, in backoff, and with push unhealthy; a service call reaches the entity while its state is unknown (entity available).
 
