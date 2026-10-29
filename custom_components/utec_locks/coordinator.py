@@ -6,7 +6,9 @@
 * Nothing (UI, services, manual refresh) polls the full account faster than
   30 s: the scheduler is padded, manual refreshes go through a 30 s debouncer,
   and ``_async_update_data`` has a 29.5 s monotonic guard.
-* Backoff with jitter on failures; circuit open after five; 429 honored.
+* Backoff with jitter on failures, capped at 60 s (keeps retrying near the
+  30 s floor); transport errors recreate the HTTP session and refresh the
+  token once per failure streak; 429 honored.
 * Push never suppresses polling. There is no faster fallback when push is down.
 * Discovery at setup, every 6 h, and debounced (10 min) on sync/unknown ids.
 * Stale is ``unknown``, not unavailable: a 15 s timer re-checks freshness and
@@ -37,12 +39,18 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.util import dt as dt_util
 
 from .api.client import UtecClient
-from .api.errors import UtecAuthError, UtecError, UtecRateLimitError
+from .api.errors import (
+    UtecAuthError,
+    UtecError,
+    UtecRateLimitError,
+    UtecTransportError,
+)
 from .api.models import LockInfo, LockReport, PushMessage, Source, parse_lock_report
 from .const import (
     BACKOFF_JITTER,
     BACKOFF_MAX_SECONDS,
     CIRCUIT_OPEN_AFTER_FAILURES,
+    CLOUD_UNREACHABLE_AFTER,
     CONF_POLL_INTERVAL,
     CONF_PUSH_HEALTHY_POLL_INTERVAL,
     CONF_SLOW_POLL_WHEN_PUSH_HEALTHY,
@@ -52,6 +60,7 @@ from .const import (
     DISCOVERY_INTERVAL,
     DOMAIN,
     FLOOR_GUARD_SECONDS,
+    ISSUE_CLOUD_UNREACHABLE,
     ISSUE_LOCK_REMOVED,
     ISSUE_RATE_LIMITED,
     LOCK_REMOVED_AFTER_DISCOVERIES,
@@ -104,10 +113,13 @@ def clamp_relaxed_interval(interval: timedelta) -> timedelta:
 
 
 def backoff_delay(base: float, failures: int, rng: random.Random | None = None) -> float:
-    """``min(base x 2^n, 900)`` with +/-20 % jitter, never below ``base``.
+    """``min(base x 2^n, BACKOFF_MAX)`` with +/-20 % jitter, never below ``base``.
 
-    ``n = failures - 1`` so the first retry is at about ``base``. From the
-    fifth consecutive failure the circuit is open: one attempt per 900 s.
+    ``n = failures - 1`` so the first retry is at about ``base``. Cap is 60 s
+    (Rob, 2026-10-28): keep retrying near the 30 s floor during outages so
+    state recovers as soon as the cloud is reachable again, instead of waiting
+    up to 15 minutes at the old 900 s circuit-open interval. From the fifth
+    consecutive failure the delay stays at the cap (still ~60 s, not 900 s).
     """
     rng = rng or random
     if failures >= CIRCUIT_OPEN_AFTER_FAILURES:
@@ -137,11 +149,19 @@ class UtecAccountCoordinator(DataUpdateCoordinator[dict[str, LockSnapshot]]):
         client: UtecClient,
         usage: UsageMeter,
         health: PushHealth,
+        *,
+        recreate_session: Callable[[], Any] | None = None,
     ) -> None:
-        """Initialize with the floor-respecting interval."""
+        """Initialize with the floor-respecting interval.
+
+        ``recreate_session`` is an async callable that replaces the client's
+        HTTP session after a transport error (owned session only; never the
+        HA shared session).
+        """
         self.client = client
         self.usage = usage
         self.health = health
+        self._recreate_session = recreate_session
         self.store = LockStateStore()
         self.locks: dict[str, LockInfo] = {}
         self.removed: set[str] = set()
@@ -149,6 +169,7 @@ class UtecAccountCoordinator(DataUpdateCoordinator[dict[str, LockSnapshot]]):
         self.discovery_ignored = 0
         self._missing_count: dict[str, int] = {}
         self._failures = 0
+        self._transport_recovered_this_streak = False
         self._last_query_started: float | None = None
         self._first_success_done = False
         self.next_poll_due: datetime | None = None
@@ -354,8 +375,11 @@ class UtecAccountCoordinator(DataUpdateCoordinator[dict[str, LockSnapshot]]):
         except UtecError as err:
             self._failures += 1
             self.last_failure = dt_util.utcnow()
+            if isinstance(err, UtecTransportError):
+                await self._async_recover_transport()
             delay = backoff_delay(base, self._failures, self.rng)
             self._schedule_after_failure(delay)
+            self._maybe_create_cloud_unreachable_issue()
             raise UpdateFailed(
                 translation_domain=DOMAIN,
                 translation_key="api_unreachable",
@@ -364,7 +388,9 @@ class UtecAccountCoordinator(DataUpdateCoordinator[dict[str, LockSnapshot]]):
             ) from err
 
         self._failures = 0
+        self._transport_recovered_this_streak = False
         self.last_success = dt_util.utcnow()
+        self._clear_cloud_unreachable_issue()
         for device_id, code in result.device_errors.items():
             self.store.record_error(device_id, code)
         self.async_apply_reports(list(result.reports.values()), notify=False)
@@ -373,9 +399,62 @@ class UtecAccountCoordinator(DataUpdateCoordinator[dict[str, LockSnapshot]]):
         self._schedule_next(success=True)
         return self.store.snapshot()
 
+    async def _async_recover_transport(self) -> None:
+        """Recreate the HTTP session and refresh the token once per failure streak."""
+        if self._transport_recovered_this_streak:
+            return
+        self._transport_recovered_this_streak = True
+        _LOGGER.info(
+            "U-tec API transport error; recreating HTTP session and refreshing token"
+        )
+        if self._recreate_session is not None:
+            try:
+                await self._recreate_session()
+            except Exception:
+                _LOGGER.debug("HTTP session recreate failed", exc_info=True)
+        await self.client.async_recover_transport()
+
+    def _cloud_unreachable_issue_id(self) -> str:
+        return f"{ISSUE_CLOUD_UNREACHABLE}_{self.config_entry.entry_id}"
+
+    def _maybe_create_cloud_unreachable_issue(self) -> None:
+        """Raise a repair when the cloud has been unreachable for a while."""
+        if self.last_success is None:
+            # Never succeeded this run: use failure count x max backoff as proxy.
+            if self._failures < CIRCUIT_OPEN_AFTER_FAILURES:
+                return
+        elif dt_util.utcnow() - self.last_success < CLOUD_UNREACHABLE_AFTER:
+            return
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            self._cloud_unreachable_issue_id(),
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=ISSUE_CLOUD_UNREACHABLE,
+            translation_placeholders={
+                "failures": str(self._failures),
+                "last_success": (
+                    self.last_success.isoformat() if self.last_success else "never"
+                ),
+            },
+        )
+
+    def _clear_cloud_unreachable_issue(self) -> None:
+        ir.async_delete_issue(self.hass, DOMAIN, self._cloud_unreachable_issue_id())
+
+    @property
+    def consecutive_failures(self) -> int:
+        """How many background polls in a row have failed (0 after a success)."""
+        return self._failures
+
     def _schedule_after_failure(self, delay: float) -> None:
         self.interval_in_use = delay
         self.next_poll_due = dt_util.utcnow() + timedelta(seconds=delay)
+        # Keep HA's coordinator scheduler on the bounded retry (retry_after on
+        # UpdateFailed is the primary driver; also set update_interval so a
+        # missed retry_after still retries near the floor).
+        self.update_interval = self._padded(delay)
 
     def _schedule_next(self, *, success: bool) -> None:
         interval = self.effective_interval.total_seconds()

@@ -18,7 +18,7 @@ from homeassistant.exceptions import (
     ConfigEntryNotReady,
 )
 from homeassistant.helpers import device_registry as dr, issue_registry as ir
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_create_clientsession
 from homeassistant.helpers.config_entry_oauth2_flow import (
     ImplementationUnavailableError,
     OAuth2Session,
@@ -83,26 +83,41 @@ async def async_setup_entry(hass: HomeAssistant, entry: UtecConfigEntry) -> bool
         raise ConfigEntryNotReady(
             translation_domain=DOMAIN, translation_key="credentials_unavailable"
         ) from err
-    session = OAuth2Session(hass, entry, implementation)
+    oauth_session = OAuth2Session(hass, entry, implementation)
 
     usage = UsageMeter(hass, entry.entry_id)
     await usage.async_load()
     integration = await async_get_integration(hass, DOMAIN)
+    # Own a clientsession so transport recovery can recreate it without
+    # touching Home Assistant's shared session (DESIGN.md 5.6, Rob 2026-10-28).
+    http_session = async_create_clientsession(hass)
+    tokens = OAuthTokenProvider(
+        hass,
+        entry,
+        oauth_session,
+        on_refresh=usage.record_token_refresh,
+        observer=usage.record_token_request,
+    )
     client = UtecClient(
-        async_get_clientsession(hass),
-        OAuthTokenProvider(
-            hass,
-            entry,
-            session,
-            on_refresh=usage.record_token_refresh,
-            observer=usage.record_token_request,
-        ),
+        http_session,
+        tokens,
         user_agent=USER_AGENT_TEMPLATE.format(version=integration.version),
         observer=usage.record_request,
         send_custom_data=SEND_CUSTOM_DATA,
     )
+
+    async def _recreate_http_session() -> None:
+        nonlocal http_session
+        old = http_session
+        http_session = async_create_clientsession(hass)
+        client.set_session(http_session)
+        if not old.closed:
+            await old.close()
+
     health = PushHealth(hass)
-    coordinator = UtecAccountCoordinator(hass, entry, client, usage, health)
+    coordinator = UtecAccountCoordinator(
+        hass, entry, client, usage, health, recreate_session=_recreate_http_session
+    )
     commands = CommandExecutor(hass, entry, coordinator)
     coordinator.commands = commands
 
@@ -178,6 +193,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: UtecConfigEntry) -> boo
         runtime.coordinator.async_stop()
         runtime.health.async_shutdown()
         await runtime.usage.async_flush()
+        await runtime.client.async_close()
     return unload_ok
 
 

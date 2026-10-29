@@ -168,6 +168,30 @@ class UtecClient:
         self._url = url
         self.exchanges: deque[RequestRecord] = deque(maxlen=20)
 
+    def set_session(self, session: aiohttp.ClientSession) -> None:
+        """Swap the HTTP session (used after a transport error recovery)."""
+        self._session = session
+
+    async def async_close(self) -> None:
+        """Close the owned HTTP session if it is still open."""
+        if self._session is not None and not self._session.closed:
+            await self._session.close()
+
+    async def async_recover_transport(self) -> None:
+        """Best-effort recovery after a transport error: force a token refresh.
+
+        The caller is responsible for replacing a broken HTTP session. Token
+        refresh failures are logged and swallowed so recovery never blocks the
+        next poll attempt.
+        """
+        try:
+            await self._tokens.async_force_refresh()
+        except Exception as err:
+            _LOGGER.debug(
+                "Token refresh during transport recovery failed: %s",
+                type(err).__name__,
+            )
+
     # ------------------------------------------------------------------
     # Public operations
     # ------------------------------------------------------------------

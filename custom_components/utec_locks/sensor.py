@@ -190,6 +190,18 @@ ACCOUNT_SENSORS: tuple[AccountSensorDescription, ...] = (
         value_fn=lambda c: round(c.interval_in_use),
     ),
     AccountSensorDescription(
+        key="consecutive_failures",
+        translation_key="consecutive_failures",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda c: c.consecutive_failures,
+        attrs_fn=lambda c: {
+            "last_success": c.last_success.isoformat() if c.last_success else None,
+            "last_failure": c.last_failure.isoformat() if c.last_failure else None,
+            "next_poll_due": c.next_poll_due.isoformat() if c.next_poll_due else None,
+        },
+    ),
+    AccountSensorDescription(
         key="api_response_time_last",
         translation_key="api_response_time_last",
         device_class=SensorDeviceClass.DURATION,
